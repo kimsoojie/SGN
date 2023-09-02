@@ -16,10 +16,13 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau, MultiStepLR
 from model import SGN
+from model import CLIP
 from data import NTUDataLoaders, AverageMeter
 import fit
 from util import make_dir, get_num_classes
+from util import get_ntu120_action_classes
 import yaml
+import torch.nn.functional as F
 
 with open('config.yaml', 'r') as file:
     cfgs = yaml.safe_load(file)
@@ -47,7 +50,11 @@ def main():
 
     args.num_classes = get_num_classes(args.dataset)
     model = SGN(args.num_classes, args.dataset, args.seg, args)
-
+    model_clip = CLIP()
+    
+    ntu120_action_classes = get_ntu120_action_classes()
+    ntu120_text_tokens = model_clip.tokenize(ntu120_action_classes) #[120,512]
+    
     total = get_n_params(model)
     print(model)
     print('The number of parameters: ', total)
@@ -56,7 +63,7 @@ def main():
     if torch.cuda.is_available():
         print('It is using GPU!')
         model = model.cuda()
-
+            
     criterion = LabelSmoothingLoss(args.num_classes, smoothing=0.1).cuda()
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
@@ -106,7 +113,7 @@ def main():
             print(epoch, optimizer.param_groups[0]['lr'])
 
             t_start = time.time()
-            train_loss, train_acc = train(train_loader, model, criterion, optimizer, epoch)
+            train_loss, train_acc = train(train_loader, model, criterion, optimizer, epoch, model_clip, ntu120_text_tokens)
             val_loss, val_acc = validate(val_loader, model, criterion)
             log_res += [[train_loss, train_acc.cpu().numpy(),\
                          val_loss, val_acc.cpu().numpy()]]
@@ -154,18 +161,29 @@ def main():
     test(test_loader, model, checkpoint, lable_path, pred_path)
 
 
-def train(train_loader, model, criterion, optimizer, epoch):
+def train(train_loader, model, criterion, optimizer, epoch, model_clip, ntu120_text_tokens):
     losses = AverageMeter()
     acces = AverageMeter()
     model.train()
 
     for i, (inputs, target) in enumerate(train_loader):
         #input:[bs,20,75]
-        output,_ = model(inputs.cuda())
+        output, jointlevel_embeddings = model(inputs.cuda()) #jointlevel_embeddings:[512, 256, 25, 20]
+        
+        #CLIP
+        text_tokens = ntu120_text_tokens[target[:]-1,:] 
+        text_features = model_clip.encode_text(text_tokens) #[512,512]
+        jointlevel_embeddings = jointlevel_embeddings.view(512, -1)
+        padding = torch.zeros(text_features.shape[0], jointlevel_embeddings.shape[1]-text_features.shape[1])
+        text_features = torch.cat((text_features, padding.to(text_features.device)), dim=1)
+        cosine_similarity = F.cosine_similarity(text_features,jointlevel_embeddings, dim=-1)
+        clip_loss = (1-cosine_similarity).mean()
+        #loss = clip_loss
+        
         #target:[bs]
         target = target.cuda(async = True)
         loss = criterion(output, target)
-
+      
         # measure accuracy and record loss
         acc = accuracy(output.data, target)
         losses.update(loss.item(), inputs.size(0))

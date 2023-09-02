@@ -25,4 +25,21 @@ def get_num_classes(dataset):
     elif dataset == 'NTU120':
         return 120
 
+def get_ntu120_action_classes():
+    with open('data/ntu/ntu120_action_classes.txt', 'r') as file:
+        lines = file.readlines()
+    ntu120_action_classes=[]
+    k=0
+    for line in lines:
+        if k<10:
+            action = line[4:-2]
+        elif k<100:
+            action = line[5:-2]
+        else:
+            action = line[6:-2]
+        ntu120_action_classes.append(action)
+        k=k+1
+    print(ntu120_action_classes)
+    print(len(ntu120_action_classes))
+    return ntu120_action_classes
     

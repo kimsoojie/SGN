@@ -305,7 +305,6 @@ def get_two_actors_points(bodies_data):
     """
     ske_name = bodies_data['name']
     label = int(ske_name[-3:])
-    print(label)
     num_frames = bodies_data['num_frames']
     bodies_info = get_bodies_info(bodies_data['data'])
 

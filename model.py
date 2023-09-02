@@ -3,6 +3,7 @@
 from torch import nn
 import torch
 import math
+import clip
 
 class SGN(nn.Module):
     def __init__(self, num_classes, dataset, seg, args, bias = True):
@@ -208,3 +209,20 @@ class compute_g_spa(nn.Module):
         g = self.softmax(g3)
         return g
     
+
+class CLIP():
+    def __init__(self):
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.clip_model, self.clip_preprocess = clip.load("ViT-B/32", device=self.device)
+        self.clip_model.eval()
+        for p in self.clip_model.parameters():
+            p.requires_grad = False
+            
+    def load(self):
+        return self.clip_model,self.clip_preprocess
+    
+    def encode_text(self, tokens):
+        return self.clip_model.encode_text(tokens)
+    
+    def tokenize(self, action_list):
+        return clip.tokenize(action_list).to(self.device)
