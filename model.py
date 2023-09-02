@@ -49,32 +49,48 @@ class SGN(nn.Module):
     def forward(self, input):
         
         # Dynamic Representation
-        bs, step, dim = input.size()
+        bs, step, dim = input.size() # [512,20,75]
         num_joints = dim //3
         input = input.view((bs, step, num_joints, 3))
-        input = input.permute(0, 3, 2, 1).contiguous()
+        input = input.permute(0, 3, 2, 1).contiguous() # [bs,3,num_joint,step]
         dif = input[:, :, :, 1:] - input[:, :, :, 0:-1]
+        #torch.Size([512, 3, 25, 19])
         dif = torch.cat([dif.new(bs, dif.size(1), num_joints, 1).zero_(), dif], dim=-1)
-        pos = self.joint_embed(input)
+        #torch.Size([512, 3, 25, 20])
+        pos = self.joint_embed(input) #64
+        #torch.Size([512, 64, 25, 20])
         tem1 = self.tem_embed(self.tem)
+        #torch.Size([512, 256, 25, 20])
         spa1 = self.spa_embed(self.spa)
+        #torch.Size([512, 64, 25, 20])
         dif = self.dif_embed(dif)
+        #torch.Size([512, 64, 25, 20])
         dy = pos + dif
+        #torch.Size([512, 64, 25, 20])
+        
         # Joint-level Module
+        #input: torch.Size([512, 3, 25, 20])
         input= torch.cat([dy, spa1], 1)
+        # torch.Size([512, 128, 25, 20])
         g = self.compute_g1(input)
         input = self.gcn1(input, g)
+        # torch.Size([512, 128, 25, 20])
         input = self.gcn2(input, g)
-        input = self.gcn3(input, g)
+        #torch.Size([512, 256, 25, 20])
+        input = self.gcn3(input, g) # torch.Size([512, 256, 25, 20])
+        
+        joint_level_embedding=input
+        
         # Frame-level Module
         input = input + tem1
-        input = self.cnn(input)
+        input = self.cnn(input) #torch.Size([512, 512, 1, 20])
+        
         # Classification
         output = self.maxpool(input)
-        output = torch.flatten(output, 1)
+        output = torch.flatten(output, 1) #[512,512]
         output = self.fc(output)
-
-        return output
+        #torch.Size([512, 512, 1, 20])
+        return output, joint_level_embedding
 
     def one_hot(self, bs, spa, tem):
 

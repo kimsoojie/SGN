@@ -161,7 +161,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
     for i, (inputs, target) in enumerate(train_loader):
         #input:[bs,20,75]
-        output = model(inputs.cuda())
+        output,_ = model(inputs.cuda())
         #target:[bs]
         target = target.cuda(async = True)
         loss = criterion(output, target)
@@ -192,7 +192,7 @@ def validate(val_loader, model, criterion):
 
     for i, (inputs, target) in enumerate(val_loader):
         with torch.no_grad():
-            output = model(inputs.cuda())
+            output,_ = model(inputs.cuda())
         target = target.cuda(async=True)
         with torch.no_grad():
             loss = criterion(output, target)
@@ -217,7 +217,7 @@ def test(test_loader, model, checkpoint, lable_path, pred_path):
     t_start = time.time()
     for i, (inputs, target) in enumerate(test_loader):
         with torch.no_grad():
-            output = model(inputs.cuda())
+            output,_ = model(inputs.cuda())
             output = output.view((-1, inputs.size(0)//target.size(0), output.size(1)))
             output = output.mean(1)
 

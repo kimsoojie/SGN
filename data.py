@@ -93,19 +93,19 @@ class NTUDataLoaders(object):
 
 
         f = h5py.File(path , 'r')
-        self.train_X = f['x'][:]
-        self.train_Y = np.argmax(f['y'][:],-1)
-        self.val_X = f['valid_x'][:]
-        self.val_Y = np.argmax(f['valid_y'][:], -1)
+        self.train_X = f['x'][:] #(21696, 248, 150)
+        self.train_Y = np.argmax(f['y'][:],-1) #(21696,)
+        self.val_X = f['valid_x'][:] #(1142, 248, 150)
+        self.val_Y = np.argmax(f['valid_y'][:], -1) #(1142,)
         self.test_X = f['test_x'][:]
         self.test_Y = np.argmax(f['test_y'][:], -1)
         f.close()
 
         ## Combine the training data and validation data togehter as ST-GCN
-        self.train_X = np.concatenate([self.train_X, self.val_X], axis=0)
-        self.train_Y = np.concatenate([self.train_Y, self.val_Y], axis=0)
-        self.val_X = self.test_X
-        self.val_Y = self.test_Y
+        self.train_X = np.concatenate([self.train_X, self.val_X], axis=0) #(22838, 248, 150)
+        self.train_Y = np.concatenate([self.train_Y, self.val_Y], axis=0) #(22838,)
+        self.val_X = self.test_X #(33952, 248, 150)
+        self.val_Y = self.test_Y #(33952,)
 
     def collate_fn_fix_train(self, batch):
         """Puts each data field into a tensor with outer dimension batch size

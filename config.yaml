@@ -2,7 +2,7 @@ cfgs:
     network: "SGN"
     dataset: "NTU120"
     case: 0
-    batch_size: 256
+    batch_size: 512
     max_epochs: 120
     monitor: "val_acc"
     lr: 0.001

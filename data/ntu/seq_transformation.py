@@ -8,7 +8,7 @@ import logging
 import h5py
 from sklearn.model_selection import train_test_split
 import yaml
-
+import random
 
 root_path = './'
 stat_path = osp.join(root_path, 'statistics')
@@ -134,7 +134,10 @@ def align_frames(skes_joints, frames_cnt):
 
 def one_hot_vector(labels):
     num_skes = len(labels)
-    labels_vector = np.zeros((num_skes, 120))
+    if cfgs['cfgs']['dataset']=='NTU':
+        labels_vector = np.zeros((num_skes, 60))
+    if cfgs['cfgs']['dataset']=='NTU120':
+        labels_vector = np.zeros((num_skes, 120))
     for idx, l in enumerate(labels):
         labels_vector[idx, l] = 1
 
@@ -173,7 +176,7 @@ def split_dataset(skes_joints, label, performer, camera, evaluation, save_path):
     h5file = h5py.File(osp.join(save_path, 'NTU_%s.h5' % (evaluation)), 'w')
     # Training set
     h5file.create_dataset('x', data=skes_joints[train_indices])
-    train_one_hot_labels = one_hot_vector(train_labels)
+    train_one_hot_labels = one_hot_vector(train_labels) #[num_skes,120]
     h5file.create_dataset('y', data=train_one_hot_labels)
     # Validation set
     h5file.create_dataset('valid_x', data=skes_joints[val_indices])
@@ -203,11 +206,13 @@ def get_indices(performer, camera, evaluation='CS'):
 
         # Get indices of test data
         for idx in test_ids:
+            #rnd = random.randint(0,len(np.where(performer == idx))-1)
             temp = np.where(performer == idx)[0]  # 0-based index
             test_indices = np.hstack((test_indices, temp)).astype(np.int)
 
         # Get indices of training data
         for train_id in train_ids:
+            #rnd = random.randint(0,len(np.where(performer == train_id))-1)
             temp = np.where(performer == train_id)[0]  # 0-based index
             train_indices = np.hstack((train_indices, temp)).astype(np.int)
     else:  # Cross View (Camera IDs)
