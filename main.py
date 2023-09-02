@@ -19,23 +19,27 @@ from model import SGN
 from data import NTUDataLoaders, AverageMeter
 import fit
 from util import make_dir, get_num_classes
+import yaml
+
+with open('config.yaml', 'r') as file:
+    cfgs = yaml.safe_load(file)
 
 parser = argparse.ArgumentParser(description='Skeleton-Based Action Recgnition')
 fit.add_fit_args(parser)
 parser.set_defaults(
-    network='SGN',
-    dataset = 'NTU120',
-    case = 0,
-    batch_size=128,
-    max_epochs=120,
-    monitor='val_acc',
-    lr=0.001,
-    weight_decay=0.0001,
-    lr_factor=0.1,
-    workers=16,
-    print_freq = 20,
-    train = 0,
-    seg = 20,
+    network=cfgs['cfgs']['network'],
+    dataset = cfgs['cfgs']['dataset'],
+    case = cfgs['cfgs']['case'],
+    batch_size=cfgs['cfgs']['batch_size'],
+    max_epochs=cfgs['cfgs']['max_epochs'],
+    monitor=cfgs['cfgs']['monitor'],
+    lr=cfgs['cfgs']['lr'],
+    weight_decay=cfgs['cfgs']['weight_decay'],
+    lr_factor=cfgs['cfgs']['lr_factor'],
+    workers=cfgs['cfgs']['workers'],
+    print_freq = cfgs['cfgs']['print_freq'],
+    train = cfgs['cfgs']['train'],
+    seg = cfgs['cfgs']['seg'], # skeleton sequence segmentation, randomly select one frame
     )
 args = parser.parse_args()
 
@@ -156,8 +160,9 @@ def train(train_loader, model, criterion, optimizer, epoch):
     model.train()
 
     for i, (inputs, target) in enumerate(train_loader):
-
+        #input:[bs,20,75]
         output = model(inputs.cuda())
+        #target:[bs]
         target = target.cuda(async = True)
         loss = criterion(output, target)
 

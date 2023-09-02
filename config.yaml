@@ -1,0 +1,14 @@
+cfgs:
+    network: "SGN"
+    dataset: "NTU120"
+    case: 0
+    batch_size: 256
+    max_epochs: 120
+    monitor: "val_acc"
+    lr: 0.001
+    weight_decay: 0.0001
+    lr_factor: 0.1
+    workers: 16
+    print_freq: 20
+    train: 0
+    seg: 20

@@ -14,12 +14,12 @@ class SGN(nn.Module):
         num_joint = 25
         bs = args.batch_size
         if args.train:
-            self.spa = self.one_hot(bs, num_joint, self.seg)
+            self.spa = self.one_hot(bs, num_joint, self.seg) #[bs,20,25,25]
             self.spa = self.spa.permute(0, 3, 2, 1).cuda()
-            self.tem = self.one_hot(bs, self.seg, num_joint)
+            self.tem = self.one_hot(bs, self.seg, num_joint) #[bs,25,20,20]
             self.tem = self.tem.permute(0, 3, 1, 2).cuda()
         else:
-            self.spa = self.one_hot(32 * 5, num_joint, self.seg)
+            self.spa = self.one_hot(32 * 5, num_joint, self.seg) 
             self.spa = self.spa.permute(0, 3, 2, 1).cuda()
             self.tem = self.one_hot(32 * 5, self.seg, num_joint)
             self.tem = self.tem.permute(0, 3, 1, 2).cuda()
