@@ -129,7 +129,7 @@ def align_frames(skes_joints, frames_cnt):
 
 def one_hot_vector(labels):
     num_skes = len(labels)
-    labels_vector = np.zeros((num_skes, 60))
+    labels_vector = np.zeros((num_skes, 120))
     for idx, l in enumerate(labels):
         labels_vector[idx, l] = 1
 

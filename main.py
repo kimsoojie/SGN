@@ -24,9 +24,9 @@ parser = argparse.ArgumentParser(description='Skeleton-Based Action Recgnition')
 fit.add_fit_args(parser)
 parser.set_defaults(
     network='SGN',
-    dataset = 'NTU',
+    dataset = 'NTU120',
     case = 0,
-    batch_size=64,
+    batch_size=128,
     max_epochs=120,
     monitor='val_acc',
     lr=0.001,

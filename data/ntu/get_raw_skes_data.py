@@ -36,12 +36,16 @@ def get_raw_bodies_data(skes_path, ske_name, frames_drop_skes, frames_drop_logge
     valid_frames = -1  # 0-based index
     current_line = 1
 
+    #txt_file = open('ignore.txt','r+')
+    
     for f in range(num_frames):
         num_bodies = int(str_data[current_line].strip('\r\n'))
         current_line += 1
 
         if num_bodies == 0:  # no data in this frame, drop it
             frames_drop.append(f)  # 0-based index
+            #if ske_name not in txt_file:
+                #txt_file.write(ske_name+'\n')
             continue
 
         valid_frames += 1
@@ -74,7 +78,7 @@ def get_raw_bodies_data(skes_path, ske_name, frames_drop_skes, frames_drop_logge
                 body_data['interval'].append(pre_frame_idx + 1)  # add a new frame index
 
             bodies_data[bodyID] = body_data  # Update bodies_data
-
+    #txt_file.close()
     num_frames_drop = len(frames_drop)
     assert num_frames_drop < num_frames, \
         'Error: All frames data (%d) of %s is missing or lost' % (num_frames, ske_name)
@@ -114,6 +118,7 @@ def get_raw_skes_data():
     frames_cnt = np.zeros(num_files, dtype=np.int)
 
     for (idx, ske_name) in enumerate(skes_name):
+        print(ske_name)
         bodies_data = get_raw_bodies_data(skes_path, ske_name, frames_drop_skes, frames_drop_logger)
         raw_skes_data.append(bodies_data)
         frames_cnt[idx] = bodies_data['num_frames']

@@ -304,7 +304,8 @@ def get_two_actors_points(bodies_data):
         joints, colors.
     """
     ske_name = bodies_data['name']
-    label = int(ske_name[-2:])
+    label = int(ske_name[-3:])
+    print(label)
     num_frames = bodies_data['num_frames']
     bodies_info = get_bodies_info(bodies_data['data'])
 
@@ -325,13 +326,13 @@ def get_two_actors_points(bodies_data):
 
         joints = np.zeros((num_frames, 150), dtype=np.float32)
         colors = np.ones((num_frames, 2, 25, 2), dtype=np.float32) * np.nan
-
+        
         bodyID, actor1 = bodies_data[0]  # the 1st actor with largest motion
         start1, end1 = actor1['interval'][0], actor1['interval'][-1]
         joints[start1:end1 + 1, :75] = actor1['joints'].reshape(-1, 75)
         colors[start1:end1 + 1, 0] = actor1['colors']
         actor1_info = '{:^17}\t{}\t{:^8}\n'.format('Actor1', 'Interval', 'Motion') + \
-                      '{}\t{:^8}\t{:f}\n'.format(bodyID, str([start1, end1]), actor1['motion'])
+                        '{}\t{:^8}\t{:f}\n'.format(bodyID, str([start1, end1]), actor1['motion'])
         del bodies_data[0]
 
         actor2_info = '{:^17}\t{}\t{:^8}\n'.format('Actor2', 'Interval', 'Motion')
@@ -355,9 +356,7 @@ def get_two_actors_points(bodies_data):
                 start2 = min(start, start2)
                 end2 = max(end, end2)
             del bodies_data[0]
-
         bodies_info += ('\n' + actor1_info + '\n' + actor2_info)
-
     with open(osp.join(actors_info_dir, ske_name + '.txt'), 'w') as fw:
         fw.write(bodies_info + '\n')
 
