@@ -31,7 +31,7 @@ class NTUDataset(Dataset):
         return [self.x[index], int(self.y[index])]
 
 class NTUDataLoaders(object):
-    def __init__(self, dataset ='NTU', case = 0, aug = 1, seg = 30):
+    def __init__(self, dataset ='NTU120', case = 0, aug = 1, seg = 30):
         self.dataset = dataset
         self.case = case
         self.aug = aug

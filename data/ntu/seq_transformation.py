@@ -198,8 +198,8 @@ def get_indices(performer, camera, evaluation='CS'):
             test_ids = [3,  6,  7,  10, 11, 12, 20, 21, 22, 23,
                         24, 26, 29, 30, 32, 33, 36, 37, 39, 40]
         if cfgs['cfgs']['dataset']=='NTU120':
-            train_ids=[i for i in range(1, 107)] #for ntu120
-            test_ids=[i for i in range(107, 121)] #for ntu120
+            train_ids=[i for i in range(1, 54)] #for ntu120
+            test_ids=[i for i in range(54, 106)] #for ntu120
 
         # Get indices of test data
         for idx in test_ids:
