@@ -53,7 +53,8 @@ def main():
     model_clip = CLIP()
     
     ntu120_action_classes = get_ntu120_action_classes()
-    ntu120_text_tokens = model_clip.tokenize(ntu120_action_classes) #[120,512]
+    ntu120_text_tokens = model_clip.tokenize(ntu120_action_classes)
+    #print(ntu120_text_tokens.shape) #[120,77]
     
     total = get_n_params(model)
     print(model)
@@ -65,6 +66,7 @@ def main():
         model = model.cuda()
             
     criterion = LabelSmoothingLoss(args.num_classes, smoothing=0.1).cuda()
+    criterion_clip=CLIPLoss(model_clip,ntu120_text_tokens).cuda()
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if args.monitor == 'val_acc':
@@ -113,8 +115,8 @@ def main():
             print(epoch, optimizer.param_groups[0]['lr'])
 
             t_start = time.time()
-            train_loss, train_acc = train(train_loader, model, criterion, optimizer, epoch, model_clip, ntu120_text_tokens)
-            val_loss, val_acc = validate(val_loader, model, criterion)
+            train_loss, train_acc = train(train_loader, model, criterion, criterion_clip, optimizer, epoch, model_clip, ntu120_text_tokens)
+            val_loss, val_acc = validate(val_loader, model, criterion, criterion_clip, model_clip, ntu120_text_tokens)
             log_res += [[train_loss, train_acc.cpu().numpy(),\
                          val_loss, val_acc.cpu().numpy()]]
 
@@ -158,34 +160,28 @@ def main():
     args.train = 0
     model = SGN(args.num_classes, args.dataset, args.seg, args)
     model = model.cuda()
-    test(test_loader, model, checkpoint, lable_path, pred_path)
+    test(test_loader, model, checkpoint, lable_path, pred_path, model_clip, ntu120_text_tokens)
 
 
-def train(train_loader, model, criterion, optimizer, epoch, model_clip, ntu120_text_tokens):
+def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, model_clip, ntu120_text_tokens):
     losses = AverageMeter()
     acces = AverageMeter()
     model.train()
 
     for i, (inputs, target) in enumerate(train_loader):
         #input:[bs,20,75]
-        output, jointlevel_embeddings = model(inputs.cuda()) #jointlevel_embeddings:[512, 256, 25, 20]
-        
-        #CLIP
-        text_tokens = ntu120_text_tokens[target[:]-1,:] 
-        text_features = model_clip.encode_text(text_tokens) #[512,512]
-        jointlevel_embeddings = jointlevel_embeddings.view(512, -1)
-        padding = torch.zeros(text_features.shape[0], jointlevel_embeddings.shape[1]-text_features.shape[1])
-        text_features = torch.cat((text_features, padding.to(text_features.device)), dim=1)
-        cosine_similarity = F.cosine_similarity(text_features,jointlevel_embeddings, dim=-1)
-        clip_loss = (1-cosine_similarity).mean()
-        #loss = clip_loss
-        
+        output, sekeleton_embeddings = model(inputs.cuda()) #sekeleton_embeddings:[bs, 512, 1, 20]
+       
         #target:[bs]
-        target = target.cuda(async = True)
-        loss = criterion(output, target)
+        #target = target.cuda(async = True)
+        loss = criterion_clip(sekeleton_embeddings, target)
       
         # measure accuracy and record loss
-        acc = accuracy(output.data, target)
+        #acc = accuracy(output.data, target)
+        target = target.cuda(async = True)
+        #loss_bce=criterion(output, target)
+        #acc = accuracy(output.data, target)
+        acc = accuracy_clip(sekeleton_embeddings.data, target, model_clip, ntu120_text_tokens)
         losses.update(loss.item(), inputs.size(0))
         acces.update(acc[0], inputs.size(0))
 
@@ -203,27 +199,29 @@ def train(train_loader, model, criterion, optimizer, epoch, model_clip, ntu120_t
     return losses.avg, acces.avg
 
 
-def validate(val_loader, model, criterion):
+def validate(val_loader, model, criterion, criterion_clip, model_clip, ntu120_text_tokens):
     losses = AverageMeter()
     acces = AverageMeter()
     model.eval()
 
     for i, (inputs, target) in enumerate(val_loader):
         with torch.no_grad():
-            output,_ = model(inputs.cuda())
+            output, sekeleton_embeddings = model(inputs.cuda())
         target = target.cuda(async=True)
         with torch.no_grad():
-            loss = criterion(output, target)
-
+            loss = criterion_clip(sekeleton_embeddings, target)
+            #loss_bce=criterion(output,target)
+            
         # measure accuracy and record loss
-        acc = accuracy(output.data, target)
+        #acc = accuracy(output.data, target)
+        acc = accuracy_clip(sekeleton_embeddings.data, target, model_clip, ntu120_text_tokens)
         losses.update(loss.item(), inputs.size(0))
         acces.update(acc[0], inputs.size(0))
 
     return losses.avg, acces.avg
 
 
-def test(test_loader, model, checkpoint, lable_path, pred_path):
+def test(test_loader, model, checkpoint, lable_path, pred_path,model_clip, ntu120_text_tokens):
     acces = AverageMeter()
     # load learnt model that obtained best performance on validation set
     model.load_state_dict(torch.load(checkpoint)['state_dict'])
@@ -235,14 +233,17 @@ def test(test_loader, model, checkpoint, lable_path, pred_path):
     t_start = time.time()
     for i, (inputs, target) in enumerate(test_loader):
         with torch.no_grad():
-            output,_ = model(inputs.cuda())
+            output, skeleton_embedding = model(inputs.cuda())
+            output=skeleton_embedding
+            
             output = output.view((-1, inputs.size(0)//target.size(0), output.size(1)))
             output = output.mean(1)
 
         label_output.append(target.cpu().numpy())
         pred_output.append(output.cpu().numpy())
 
-        acc = accuracy(output.data, target.cuda(async=True))
+        #acc = accuracy(output.data, target.cuda(async=True))
+        acc=accuracy_clip(skeleton_embedding.data,target, model_clip, ntu120_text_tokens)
         acces.update(acc[0], inputs.size(0))
 
 
@@ -263,6 +264,34 @@ def accuracy(output, target):
     correct = correct.view(-1).float().sum(0, keepdim=True)
 
     return correct.mul_(100.0 / batch_size)
+
+def accuracy_clip(skeleton_embedding, target, model_clip, ntu120_text_tokens):
+    batch_size = target.size(0)
+    clip_text_embeddings=model_clip.encode_text(ntu120_text_tokens) #[120,512]
+    clip_text_embeddings=clip_text_embeddings.unsqueeze(1).expand(120, batch_size, 512)
+    skeleton_embedding = skeleton_embedding.view(20,-1,512) #[20,bs,512]
+    skeleton_embedding=torch.mean(skeleton_embedding,dim=0) #[bs,512]
+    cosine_similarity = F.cosine_similarity(clip_text_embeddings, skeleton_embedding.unsqueeze(0), dim=-1).view(-1,120)
+    #print(cosine_similarity.shape)#[120,bs]
+    #print(target.shape) #[bs]
+    
+    _, pred = cosine_similarity.topk(5,1,True,True)
+    #pred = pred.view(-1)
+    #correct = pred.eq(target)
+    #correct = correct.view(-1).float().sum(0, keepdim=True)
+    #acc=correct.mul_(100.0 / batch_size)
+    
+    #print(pred.shape)#[bs,5]
+    cnt=0
+    for i in range(0,pred.shape[0]):
+        if any(value == target[i] for value in pred[i,:]):
+            cnt=cnt+1
+    correct=[1]
+    correct[0]=100*(cnt/batch_size)
+    acc=torch.tensor(correct)
+    
+    return acc
+
 
 def save_checkpoint(state, filename='checkpoint.pth.tar', is_best=False):
     torch.save(state, filename)
@@ -294,6 +323,28 @@ class LabelSmoothingLoss(nn.Module):
             true_dist.scatter_(1, target.data.unsqueeze(1), self.confidence)
         return torch.mean(torch.sum(-true_dist * pred, dim=self.dim))
 
+class CLIPLoss(nn.Module):
+    def __init__(self, model_clip, ntu120_text_tokens):
+        super(CLIPLoss, self).__init__()
+        self.model_clip=model_clip
+        self.ntu120_text_tokens=ntu120_text_tokens
+        
+    def forward(self, skeleton_embedding, target):
+        text_embeddings=self.model_clip.encode_text(self.ntu120_text_tokens).cpu() #[120,512]
+        bs=len(target)
+        text_features = np.zeros((bs,512))
+        for i in range(0,bs):
+            idx=target.cpu().numpy()[i]-1
+            text_features[i,:]=text_embeddings[idx,:]
+        skeleton_embedding = skeleton_embedding.view(-1,512) #[20*bs,512]
+        cosine_similarity = F.cosine_similarity(torch.tensor(text_features).unsqueeze(0).to(skeleton_embedding.device), skeleton_embedding.unsqueeze(1), dim=-1) 
+        #print(cosine_similarity.shape)#[20*bs,bs]
+        clip_loss = 1-cosine_similarity.view(-1).mean()
+        
+        loss = clip_loss
+        
+        return loss
+    
 if __name__ == '__main__':
     main()
     

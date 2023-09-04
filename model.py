@@ -80,18 +80,19 @@ class SGN(nn.Module):
         #torch.Size([512, 256, 25, 20])
         input = self.gcn3(input, g) # torch.Size([512, 256, 25, 20])
         
-        joint_level_embedding=input
-        
         # Frame-level Module
         input = input + tem1
-        input = self.cnn(input) #torch.Size([512, 512, 1, 20])
+        input = self.cnn(input) #torch.Size([bs, 512, 1, 20])
+        
+        sekeleton_embedding=input
         
         # Classification
-        output = self.maxpool(input)
-        output = torch.flatten(output, 1) #[512,512]
-        output = self.fc(output)
-        #torch.Size([512, 512, 1, 20])
-        return output, joint_level_embedding
+        #output = self.maxpool(input)
+        #output = torch.flatten(output, 1) #[512,512]
+        #output = self.fc(output)
+        ##torch.Size([bs,120])
+        output=0
+        return output, sekeleton_embedding
 
     def one_hot(self, bs, spa, tem):
 
