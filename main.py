@@ -291,13 +291,27 @@ def accuracy_clip(skeleton_embedding, target, model_clip, ntu120_text_tokens):
         acc=torch.tensor(correct)
         return acc
     
+    #cnt=0
+    #for i in range(0, batch_size):
+    #    target_text_emb = clip_text_embeddings[i,:,target[i]-1]
+    #    skeleton_emb = skeleton_embedding[i,:]
+    #    cosine_similarity=F.cosine_similarity(target_text_emb, skeleton_emb, dim=-1)
+    #    if cosine_similarity > 0.8:
+    #        cnt = cnt + 1
+    
     cnt=0
     for i in range(0, batch_size):
-        target_text_emb = clip_text_embeddings[i,:,target[i]-1]
+        arr=[]
         skeleton_emb = skeleton_embedding[i,:]
-        cosine_similarity=F.cosine_similarity(target_text_emb, skeleton_emb, dim=-1)
-        if cosine_similarity > 0.9:
-            cnt = cnt + 1
+        for k in range(0,120):
+            target_text_emb = clip_text_embeddings[i,:,k]
+            cosine_similarity=F.cosine_similarity(target_text_emb, skeleton_emb, dim=-1)
+            arr.append(cosine_similarity)
+        #max_index, max_value = max(enumerate(arr), key=lambda x: x[1])
+        topk_val, topk_idx = torch.tensor(arr).topk(5, -1, True, True)
+        if target[i].cpu()-1 in topk_idx:
+            cnt = cnt+1
+        
     
     correct=[1]
     correct[0]=100*(cnt/batch_size)
