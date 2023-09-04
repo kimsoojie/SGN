@@ -277,10 +277,13 @@ def accuracy(output, target):
 
 def accuracy_clip(skeleton_embedding, target, model_clip, ntu120_text_tokens):
     batch_size = target.size(0)
-    clip_text_embeddings=model_clip.encode_text(ntu120_text_tokens) #[120,512]
-    clip_text_embeddings=clip_text_embeddings.unsqueeze(1).expand(120, batch_size, 512)
+    clip_text_embeddings=model_clip.encode_text(ntu120_text_tokens).t() #[512,120]
+    clip_text_embeddings=clip_text_embeddings.unsqueeze(0).expand(batch_size, 512, 120)
+    #print(clip_text_embeddings.shape)#[bs,512,120]
+    
     skeleton_embedding = skeleton_embedding.view(20,-1,512) #[20,bs,512]
     skeleton_embedding=torch.mean(skeleton_embedding,dim=0) #[bs,512]
+    #skeleton_embedding = skeleton_embedding.unsqueeze(2) #[bs,512,1]
     
     if batch_size != cfgs['cfgs']['batch_size']:
         correct=[1]
@@ -288,25 +291,19 @@ def accuracy_clip(skeleton_embedding, target, model_clip, ntu120_text_tokens):
         acc=torch.tensor(correct)
         return acc
     
-    cosine_similarity = F.cosine_similarity(clip_text_embeddings, skeleton_embedding.unsqueeze(0), dim=-1).view(-1,120)
-    #print(cosine_similarity.shape)#[120,bs]
-    #print(target.shape) #[bs]
-    
-    _, pred = cosine_similarity.topk(5,1,True,True)
-    #pred = pred.view(-1)
-    #correct = pred.eq(target)
-    #correct = correct.view(-1).float().sum(0, keepdim=True)
-    #acc=correct.mul_(100.0 / batch_size)
-    
-    #print(pred.shape)#[bs,5]
     cnt=0
-    for i in range(0,pred.shape[0]):
-        if any(value == target[i] for value in pred[i,:]):
-            cnt=cnt+1
+    for i in range(0, batch_size):
+        target_text_emb = clip_text_embeddings[i,:,target[i]-1]
+        skeleton_emb = skeleton_embedding[i,:]
+        cosine_similarity=F.cosine_similarity(target_text_emb, skeleton_emb, dim=-1)
+        if cosine_similarity > 0.9:
+            cnt = cnt + 1
+    
     correct=[1]
     correct[0]=100*(cnt/batch_size)
     acc=torch.tensor(correct)
-
+    #print(np.where(classes > 0))
+    
     return acc
 
 
@@ -354,8 +351,7 @@ class CLIPLoss(nn.Module):
             idx=target.cpu().numpy()[i]-1
             text_features[i,:]=text_embeddings[idx,:]
         skeleton_embedding = skeleton_embedding.view(-1,512) #[20*bs,512]
-        cosine_similarity = F.cosine_similarity(torch.tensor(text_features).unsqueeze(0).to(skeleton_embedding.device), skeleton_embedding.unsqueeze(1), dim=-1) 
-        #print(cosine_similarity.shape)#[20*bs,bs]
+        cosine_similarity = F.cosine_similarity(torch.tensor(text_features).unsqueeze(0).to(skeleton_embedding.device), skeleton_embedding.unsqueeze(1), dim=-1) #[20*bs,bs]
         clip_loss = 1-cosine_similarity.view(-1).mean()
         
         loss = clip_loss
