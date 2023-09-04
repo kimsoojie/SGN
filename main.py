@@ -174,14 +174,17 @@ def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, mode
        
         #target:[bs]
         #target = target.cuda(async = True)
-        loss = criterion_clip(sekeleton_embeddings, target)
+        if cfgs['cfgs']['network']=='SGN_CLIP':
+            loss = criterion_clip(sekeleton_embeddings, target)
+            target = target.cuda(async = True)
+            acc = accuracy_clip(sekeleton_embeddings.data, target, model_clip, ntu120_text_tokens)
       
         # measure accuracy and record loss
-        #acc = accuracy(output.data, target)
-        target = target.cuda(async = True)
-        #loss_bce=criterion(output, target)
-        #acc = accuracy(output.data, target)
-        acc = accuracy_clip(sekeleton_embeddings.data, target, model_clip, ntu120_text_tokens)
+        if cfgs['cfgs']['network']=='SGN':
+            target = target.cuda(async = True)
+            acc = accuracy(output.data, target)
+            loss=criterion(output, target)
+        
         losses.update(loss.item(), inputs.size(0))
         acces.update(acc[0], inputs.size(0))
 
@@ -208,13 +211,17 @@ def validate(val_loader, model, criterion, criterion_clip, model_clip, ntu120_te
         with torch.no_grad():
             output, sekeleton_embeddings = model(inputs.cuda())
         target = target.cuda(async=True)
+        
+        
         with torch.no_grad():
-            loss = criterion_clip(sekeleton_embeddings, target)
-            #loss_bce=criterion(output,target)
+            if cfgs['cfgs']['network']=='SGN_CLIP':
+                loss = criterion_clip(sekeleton_embeddings, target)
+                acc = accuracy_clip(sekeleton_embeddings.data, target, model_clip, ntu120_text_tokens)
+            if cfgs['cfgs']['network']=='SGN':
+                loss=criterion(output,target)
+                acc = accuracy(output.data, target)
             
         # measure accuracy and record loss
-        #acc = accuracy(output.data, target)
-        acc = accuracy_clip(sekeleton_embeddings.data, target, model_clip, ntu120_text_tokens)
         losses.update(loss.item(), inputs.size(0))
         acces.update(acc[0], inputs.size(0))
 
@@ -234,16 +241,19 @@ def test(test_loader, model, checkpoint, lable_path, pred_path,model_clip, ntu12
     for i, (inputs, target) in enumerate(test_loader):
         with torch.no_grad():
             output, skeleton_embedding = model(inputs.cuda())
-            output=skeleton_embedding
-            
+            if cfgs['cfgs']['network']=='SGN_CLIP':
+                output=skeleton_embedding
+
             output = output.view((-1, inputs.size(0)//target.size(0), output.size(1)))
             output = output.mean(1)
 
         label_output.append(target.cpu().numpy())
         pred_output.append(output.cpu().numpy())
 
-        #acc = accuracy(output.data, target.cuda(async=True))
-        acc=accuracy_clip(skeleton_embedding.data,target, model_clip, ntu120_text_tokens)
+        if cfgs['cfgs']['network']=='SGN':
+            acc = accuracy(output.data, target.cuda(async=True))
+        if cfgs['cfgs']['network']=='SGN_CLIP':
+            acc=accuracy_clip(skeleton_embedding.data,target, model_clip, ntu120_text_tokens)
         acces.update(acc[0], inputs.size(0))
 
 
@@ -271,6 +281,13 @@ def accuracy_clip(skeleton_embedding, target, model_clip, ntu120_text_tokens):
     clip_text_embeddings=clip_text_embeddings.unsqueeze(1).expand(120, batch_size, 512)
     skeleton_embedding = skeleton_embedding.view(20,-1,512) #[20,bs,512]
     skeleton_embedding=torch.mean(skeleton_embedding,dim=0) #[bs,512]
+    
+    if batch_size != cfgs['cfgs']['batch_size']:
+        correct=[1]
+        correct[0]=0
+        acc=torch.tensor(correct)
+        return acc
+    
     cosine_similarity = F.cosine_similarity(clip_text_embeddings, skeleton_embedding.unsqueeze(0), dim=-1).view(-1,120)
     #print(cosine_similarity.shape)#[120,bs]
     #print(target.shape) #[bs]
@@ -289,7 +306,7 @@ def accuracy_clip(skeleton_embedding, target, model_clip, ntu120_text_tokens):
     correct=[1]
     correct[0]=100*(cnt/batch_size)
     acc=torch.tensor(correct)
-    
+
     return acc
 
 

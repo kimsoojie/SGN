@@ -4,6 +4,10 @@ from torch import nn
 import torch
 import math
 import clip
+import yaml
+
+with open('config.yaml', 'r') as file:
+    cfgs = yaml.safe_load(file)
 
 class SGN(nn.Module):
     def __init__(self, num_classes, dataset, seg, args, bias = True):
@@ -84,14 +88,18 @@ class SGN(nn.Module):
         input = input + tem1
         input = self.cnn(input) #torch.Size([bs, 512, 1, 20])
         
-        sekeleton_embedding=input
+        if cfgs['cfgs']['network']=='SGN_CLIP':
+            sekeleton_embedding=input
+            output=0
         
-        # Classification
-        #output = self.maxpool(input)
-        #output = torch.flatten(output, 1) #[512,512]
-        #output = self.fc(output)
-        ##torch.Size([bs,120])
-        output=0
+        if cfgs['cfgs']['network']=='SGN':
+            # Classification
+            output = self.maxpool(input)
+            output = torch.flatten(output, 1) #[512,512]
+            output = self.fc(output)
+            #torch.Size([bs,120])
+            sekeleton_embedding=0
+        
         return output, sekeleton_embedding
 
     def one_hot(self, bs, spa, tem):
