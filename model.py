@@ -88,17 +88,13 @@ class SGN(nn.Module):
         input = input + tem1
         input = self.cnn(input) #torch.Size([bs, 512, 1, 20])
         
-        if cfgs['cfgs']['network']=='SGN_CLIP':
-            sekeleton_embedding=input
-            output=0
+        sekeleton_embedding=input
         
-        if cfgs['cfgs']['network']=='SGN':
-            # Classification
-            output = self.maxpool(input)
-            output = torch.flatten(output, 1) #[512,512]
-            output = self.fc(output)
-            #torch.Size([bs,120])
-            sekeleton_embedding=0
+        # Classification
+        output = self.maxpool(input)
+        output = torch.flatten(output, 1) #[512,512]
+        output = self.fc(output)
+        #torch.Size([bs,120])
         
         return output, sekeleton_embedding
 
