@@ -25,7 +25,7 @@ frames_file = osp.join(denoised_path, 'frames_cnt.txt')
 
 save_path = './'
 
-with open('config.yaml', 'r') as file:
+with open('../../config.yaml', 'r') as file:
     cfgs = yaml.safe_load(file)
 
 

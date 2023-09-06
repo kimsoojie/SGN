@@ -23,6 +23,7 @@ from util import make_dir, get_num_classes
 from util import get_ntu120_action_classes
 import yaml
 import torch.nn.functional as F
+import random
 
 with open('config.yaml', 'r') as file:
     cfgs = yaml.safe_load(file)
@@ -164,23 +165,54 @@ def main():
     model = model.cuda()
     test(test_loader, model, checkpoint, lable_path, pred_path, model_clip, ntu120_text_tokens)
 
+def train_clip(train_loader, model, criterion, criterion_clip, optimizer, epoch, model_clip, ntu120_text_tokens):
+    losses = AverageMeter()
+    acces = AverageMeter()
+    model.train()
+    
+    k=0
+    inputs_list120=[]
+    target_list120=[]
+    
+    #test=np.zeros(120)
+    #for i in range(0,len(train_loader.dataset)):
+    #    inputs, target= train_loader.dataset[i]
+    #    test[target]+=1
+    #print(test)   
+    
+    while k < 120:
+        rnd_idx = random.randint(0, len(train_loader.dataset)-1)
+        inputs, target= train_loader.dataset[rnd_idx]
+        if target == k:
+            inputs_list120.append(inputs)
+            target_list120.append(target)
+            k+=1
+    print(inputs_list120.shape)#[bs,120,20,75]
+    print(target_list120.shape)#[bs,120]
+        
+    for i in range(0,len(train_loader.dataset)):
+        output, sekeleton_embeddings = model(inputs.cuda())
 
+
+    
 def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, model_clip, ntu120_text_tokens):
     losses = AverageMeter()
     acces = AverageMeter()
     model.train()
-
+    
     for i, (inputs, target) in enumerate(train_loader):
         #input:[bs,20,75]
         output, sekeleton_embeddings = model(inputs.cuda()) #sekeleton_embeddings:[bs, 512, 1, 20]
-       
+        #print(target.shape)#[bs]
+        #print(inputs.shape)#[bs,20,75]
+        
         #target:[bs]
         #target = target.cuda(async = True)
         if cfgs['cfgs']['network']=='SGN_CLIP':
             loss = criterion_clip(sekeleton_embeddings, target)
             target = target.cuda(async = True)
             acc = accuracy_clip(sekeleton_embeddings.data, target, model_clip, ntu120_text_tokens)
-      
+        
         # measure accuracy and record loss
         if cfgs['cfgs']['network']=='SGN':
             target = target.cuda(async = True)
@@ -291,6 +323,7 @@ def accuracy_clip(skeleton_embedding, target, model_clip, ntu120_text_tokens):
         correct=[1]
         correct[0]=0
         acc=torch.tensor(correct)
+        print('=====BATCH_SIZE:',batch_size)
         return acc
     
     #cnt=0
@@ -298,22 +331,27 @@ def accuracy_clip(skeleton_embedding, target, model_clip, ntu120_text_tokens):
     #    target_text_emb = clip_text_embeddings[i,:,target[i]-1]
     #    skeleton_emb = skeleton_embedding[i,:]
     #    cosine_similarity=F.cosine_similarity(target_text_emb, skeleton_emb, dim=-1)
-    #    if cosine_similarity > 0.8:
+    #    if cosine_similarity > 0.9:
     #        cnt = cnt + 1
     
     cnt=0
+    t=0
     for i in range(0, batch_size):
         arr=[]
         skeleton_emb = skeleton_embedding[i,:]
+        _t=0
         for k in range(0,120):
             target_text_emb = clip_text_embeddings[i,:,k]
             cosine_similarity=F.cosine_similarity(target_text_emb, skeleton_emb, dim=-1)
             arr.append(cosine_similarity)
-        #max_index, max_value = max(enumerate(arr), key=lambda x: x[1])
+            if cosine_similarity > 0.9:
+                _t+=1
+        if _t > 5:
+            t+=1
         topk_val, topk_idx = torch.tensor(arr).topk(5, -1, True, True)
-        if target[i].cpu()-1 in topk_idx:
+        if target[i].cpu() in topk_idx:
             cnt = cnt+1
-        
+    #print(t,'/',batch_size)    
     
     correct=[1]
     correct[0]=100*(cnt/batch_size)
@@ -364,13 +402,18 @@ class CLIPLoss(nn.Module):
         bs=len(target)
         text_features = np.zeros((bs,512))
         for i in range(0,bs):
-            idx=target.cpu().numpy()[i]-1
+            idx=target.cpu().numpy()[i]
             text_features[i,:]=text_embeddings[idx,:]
         skeleton_embedding = skeleton_embedding.view(-1,512) #[20*bs,512]
-        cosine_similarity = F.cosine_similarity(torch.tensor(text_features).unsqueeze(0).to(skeleton_embedding.device), skeleton_embedding.unsqueeze(1), dim=-1) #[20*bs,bs]
-        clip_loss = 1-cosine_similarity.view(-1).mean()
+        text_features = torch.tensor(text_features).to(skeleton_embedding.device)
         
+        cosine_similarity = F.cosine_similarity(text_features.unsqueeze(0), skeleton_embedding.unsqueeze(1), dim=-1) #[20*bs,bs]
+        clip_loss = 1-cosine_similarity.view(-1).mean()
         loss = clip_loss
+        
+        #skeleton_embedding = skeleton_embedding.mean(dim=0)
+        #cross_entropy=F.binary_cross_entropy_with_logits(text_features[target.cpu().numpy()[i],:], skeleton_embedding)
+        #loss = cross_entropy
         
         return loss
     

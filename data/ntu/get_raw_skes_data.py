@@ -45,7 +45,7 @@ def get_raw_bodies_data(skes_path, ske_name, frames_drop_skes, frames_drop_logge
         if num_bodies == 0:  # no data in this frame, drop it
             frames_drop.append(f)  # 0-based index
             #if ske_name not in txt_file:
-                #txt_file.write(ske_name+'\n')
+            #    txt_file.write(ske_name+'\n')
             continue
 
         valid_frames += 1
