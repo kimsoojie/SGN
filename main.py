@@ -69,7 +69,7 @@ def main():
         model = model.cuda()
             
     criterion = LabelSmoothingLoss(args.num_classes, smoothing=0.1).cuda()
-    criterion_clip=CLIPLoss(model_clip,ntu120_text_tokens).cuda()
+    criterion_clip=CLIPLoss(model_clip,ntu120_text_tokens,type='cross_entropy').cuda()
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if args.monitor == 'val_acc':
@@ -165,36 +165,6 @@ def main():
     model = model.cuda()
     test(test_loader, model, checkpoint, lable_path, pred_path, model_clip, ntu120_text_tokens)
 
-def train_clip(train_loader, model, criterion, criterion_clip, optimizer, epoch, model_clip, ntu120_text_tokens):
-    losses = AverageMeter()
-    acces = AverageMeter()
-    model.train()
-    
-    k=0
-    inputs_list120=[]
-    target_list120=[]
-    
-    #test=np.zeros(120)
-    #for i in range(0,len(train_loader.dataset)):
-    #    inputs, target= train_loader.dataset[i]
-    #    test[target]+=1
-    #print(test)   
-    
-    while k < 120:
-        rnd_idx = random.randint(0, len(train_loader.dataset)-1)
-        inputs, target= train_loader.dataset[rnd_idx]
-        if target == k:
-            inputs_list120.append(inputs)
-            target_list120.append(target)
-            k+=1
-    print(inputs_list120.shape)#[bs,120,20,75]
-    print(target_list120.shape)#[bs,120]
-        
-    for i in range(0,len(train_loader.dataset)):
-        output, sekeleton_embeddings = model(inputs.cuda())
-
-
-    
 def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, model_clip, ntu120_text_tokens):
     losses = AverageMeter()
     acces = AverageMeter()
@@ -210,12 +180,12 @@ def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, mode
         #target = target.cuda(async = True)
         if cfgs['cfgs']['network']=='SGN_CLIP':
             loss = criterion_clip(sekeleton_embeddings, target)
-            target = target.cuda(async = True)
+            target = target.cuda()
             acc = accuracy_clip(sekeleton_embeddings.data, target, model_clip, ntu120_text_tokens)
         
         # measure accuracy and record loss
         if cfgs['cfgs']['network']=='SGN':
-            target = target.cuda(async = True)
+            target = target.cuda()
             acc = accuracy(output.data, target)
             loss=criterion(output, target)
         
@@ -244,7 +214,7 @@ def validate(val_loader, model, criterion, criterion_clip, model_clip, ntu120_te
     for i, (inputs, target) in enumerate(val_loader):
         with torch.no_grad():
             output, sekeleton_embeddings = model(inputs.cuda())
-        target = target.cuda(async=True)
+        target = target.cuda()
         
         
         with torch.no_grad():
@@ -285,9 +255,9 @@ def test(test_loader, model, checkpoint, lable_path, pred_path,model_clip, ntu12
         pred_output.append(output.cpu().numpy())
 
         if cfgs['cfgs']['network']=='SGN':
-            acc = accuracy(output.data, target.cuda(async=True))
+            acc = accuracy(output.data, target.cuda())
         if cfgs['cfgs']['network']=='SGN_CLIP':
-            acc=accuracy_clip(skeleton_embedding.data,target, model_clip, ntu120_text_tokens)
+            acc=accuracy_clip(skeleton_embedding.data, target, model_clip, ntu120_text_tokens)
         acces.update(acc[0], inputs.size(0))
 
 
@@ -335,28 +305,21 @@ def accuracy_clip(skeleton_embedding, target, model_clip, ntu120_text_tokens):
     #        cnt = cnt + 1
     
     cnt=0
-    t=0
     for i in range(0, batch_size):
         arr=[]
         skeleton_emb = skeleton_embedding[i,:]
-        _t=0
         for k in range(0,120):
             target_text_emb = clip_text_embeddings[i,:,k]
             cosine_similarity=F.cosine_similarity(target_text_emb, skeleton_emb, dim=-1)
             arr.append(cosine_similarity)
-            if cosine_similarity > 0.9:
-                _t+=1
-        if _t > 5:
-            t+=1
+            
         topk_val, topk_idx = torch.tensor(arr).topk(5, -1, True, True)
         if target[i].cpu() in topk_idx:
-            cnt = cnt+1
-    #print(t,'/',batch_size)    
+            cnt = cnt+1 
     
     correct=[1]
     correct[0]=100*(cnt/batch_size)
     acc=torch.tensor(correct)
-    #print(np.where(classes > 0))
     
     return acc
 
@@ -392,28 +355,27 @@ class LabelSmoothingLoss(nn.Module):
         return torch.mean(torch.sum(-true_dist * pred, dim=self.dim))
 
 class CLIPLoss(nn.Module):
-    def __init__(self, model_clip, ntu120_text_tokens):
+    def __init__(self, model_clip, ntu120_text_tokens, type='cosine_similarity'):
         super(CLIPLoss, self).__init__()
         self.model_clip=model_clip
         self.ntu120_text_tokens=ntu120_text_tokens
+        self.type=type
         
-    def forward(self, skeleton_embedding, target):
+    def forward(self, skeleton_embeddings, target):
         text_embeddings=self.model_clip.encode_text(self.ntu120_text_tokens).cpu() #[120,512]
-        bs=len(target)
-        text_features = np.zeros((bs,512))
-        for i in range(0,bs):
-            idx=target.cpu().numpy()[i]
-            text_features[i,:]=text_embeddings[idx,:]
-        skeleton_embedding = skeleton_embedding.view(-1,512) #[20*bs,512]
-        text_features = torch.tensor(text_features).to(skeleton_embedding.device)
-        
-        cosine_similarity = F.cosine_similarity(text_features.unsqueeze(0), skeleton_embedding.unsqueeze(1), dim=-1) #[20*bs,bs]
-        clip_loss = 1-cosine_similarity.view(-1).mean()
-        loss = clip_loss
-        
-        #skeleton_embedding = skeleton_embedding.mean(dim=0)
-        #cross_entropy=F.binary_cross_entropy_with_logits(text_features[target.cpu().numpy()[i],:], skeleton_embedding)
-        #loss = cross_entropy
+        text_features = text_embeddings[target.cpu().numpy(), :]
+        text_features = torch.tensor(text_features).to(skeleton_embeddings.device)
+            
+        if self.type == 'cosine_similarity':
+            skeleton_embeddings = skeleton_embeddings.view(-1,512) #[20*bs,512]
+            cosine_similarity = F.cosine_similarity(text_features.unsqueeze(0), skeleton_embeddings.unsqueeze(1), dim=-1) #[20*bs,bs]
+            clip_loss = 1-cosine_similarity.view(-1).mean()
+            loss = clip_loss
+        elif self.type=='cross_entropy':
+            skeleton_embeddings = skeleton_embeddings.view(20,-1,512).mean(dim=0) #[bs,512]
+            skeleton_embeddings_prob=F.softmax(skeleton_embeddings,dim=-1)
+            cross_entropy=F.cross_entropy(skeleton_embeddings_prob,target.to(skeleton_embeddings_prob.device))
+            loss = cross_entropy
         
         return loss
     
