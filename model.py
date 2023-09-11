@@ -5,6 +5,9 @@ import torch
 import math
 import clip
 import yaml
+import torch.optim as optim
+import numpy as np
+from util import get_ntu120_action_classes
 
 with open('config.yaml', 'r') as file:
     cfgs = yaml.safe_load(file)
@@ -215,19 +218,47 @@ class compute_g_spa(nn.Module):
         return g
     
 
-class CLIP():
+class CLIP(nn.Module):
     def __init__(self):
+        super(CLIP, self).__init__()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.clip_model, self.clip_preprocess = clip.load("ViT-B/32", device=self.device)
-        self.clip_model.eval()
-        for p in self.clip_model.parameters():
-            p.requires_grad = False
-            
+        if cfgs['cfgs']['clip_train'] == False:
+            self.clip_model.eval()
+            for p in self.clip_model.parameters():
+                p.requires_grad = False
+        self.ntu120_action_classes = get_ntu120_action_classes()
+        
+        self.transformer = self.clip_model.transformer
+        self.positional_embedding = self.clip_model.positional_embedding
+        self.ln_final = self.clip_model.ln_final
+        self.text_projection = self.clip_model.text_projection
+        self.dtype = self.clip_model.dtype
+        
+        
     def load(self):
         return self.clip_model,self.clip_preprocess
     
     def encode_text(self, tokens):
-        return self.clip_model.encode_text(tokens)
+        if cfgs['cfgs']['clip_train'] == False:
+            return self.clip_model.encode_text(tokens)
+        return self._encode_text(tokens)
     
-    def tokenize(self, action_list):
-        return clip.tokenize(action_list).to(self.device)
+    def ntu120_text_tokens(self):
+        return clip.tokenize(self.ntu120_action_classes).to(self.device) #[120,77]
+    
+    def _encode_text(self, tokens):
+        x = tokens.type(self.dtype)  # [batch_size, n_ctx, d_model]
+
+        x = x + self.positional_embedding.type(self.dtype)
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        x = self.transformer(x)
+        x = x.permute(1, 0, 2)  # LND -> NLD
+        x = self.ln_final(x).type(self.dtype)
+
+        # x.shape = [batch_size, n_ctx, transformer.width]
+        # take features from the eot embedding (eot_token is the highest number in each sequence)
+        x = x[torch.arange(x.shape[0]), tokens.argmax(dim=-1)] @ self.text_projection
+
+        return x
+    

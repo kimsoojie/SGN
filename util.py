@@ -39,7 +39,7 @@ def get_ntu120_action_classes():
             action = line[6:-2]
         ntu120_action_classes.append(action)
         k=k+1
-    print(ntu120_action_classes)
-    print(len(ntu120_action_classes))
+    #print(ntu120_action_classes)
+    #print(len(ntu120_action_classes))
     return ntu120_action_classes
     

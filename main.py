@@ -20,7 +20,6 @@ from model import CLIP
 from data import NTUDataLoaders, AverageMeter
 import fit
 from util import make_dir, get_num_classes
-from util import get_ntu120_action_classes
 import yaml
 import torch.nn.functional as F
 import random
@@ -55,9 +54,9 @@ def main():
     
     model_clip = CLIP()
     
-    ntu120_action_classes = get_ntu120_action_classes()
-    ntu120_text_tokens = model_clip.tokenize(ntu120_action_classes)
-    #print(ntu120_text_tokens.shape) #[120,77]
+    total_clip = get_n_params(model_clip)
+    print(model_clip)
+    print('The number of parameters (CLIP): ', total_clip)
     
     total = get_n_params(model)
     print(model)
@@ -67,11 +66,17 @@ def main():
     if torch.cuda.is_available():
         print('It is using GPU!')
         model = model.cuda()
+        model_clip = model_clip.cuda()
             
     criterion = LabelSmoothingLoss(args.num_classes, smoothing=0.1).cuda()
-    criterion_clip=CLIPLoss(model_clip,ntu120_text_tokens,type='cross_entropy').cuda()
+    if cfgs['cfgs']['clip_train'] == False:
+        criterion_clip=CLIPLoss(model_clip,type='cross_entropy').cuda()
+    elif cfgs['cfgs']['clip_train'] == True:
+        criterion_clip=CLIPTrainLoss().cuda()
+        
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-
+    optimizer_clip = optim.Adam(model_clip.parameters(), lr=5e-5,betas=(0.9,0.98),eps=1e-6,weight_decay=0.2)
+    
     if args.monitor == 'val_acc':
         mode = 'max'
         monitor_op = np.greater
@@ -84,13 +89,14 @@ def main():
         str_op = 'reduce'
 
     scheduler = MultiStepLR(optimizer, milestones=[60, 90, 110], gamma=0.1)
+    scheduler_clip = MultiStepLR(optimizer_clip, milestones=[60, 90, 110], gamma=0.1)
+    
     # Data loading
     ntu_loaders = NTUDataLoaders(args.dataset, args.case, seg=args.seg)
     train_loader = ntu_loaders.get_train_loader(args.batch_size, args.workers)
     val_loader = ntu_loaders.get_val_loader(args.batch_size, args.workers)
     train_size = ntu_loaders.get_train_size()
     val_size = ntu_loaders.get_val_size()
-
 
     test_loader = ntu_loaders.get_test_loader(32, args.workers)
 
@@ -118,14 +124,14 @@ def main():
             print(epoch, optimizer.param_groups[0]['lr'])
 
             t_start = time.time()
-            train_loss, train_acc = train(train_loader, model, criterion, criterion_clip, optimizer, epoch, model_clip, ntu120_text_tokens)
-            val_loss, val_acc = validate(val_loader, model, criterion, criterion_clip, model_clip, ntu120_text_tokens)
+            train_loss, train_acc = train(train_loader, model, criterion, criterion_clip, optimizer, epoch, model_clip)
+            val_loss, val_acc = validate(val_loader, model, criterion, criterion_clip, model_clip)
             log_res += [[train_loss, train_acc.cpu().numpy(),\
-                         val_loss, val_acc.cpu().numpy()]]
+                        val_loss, val_acc.cpu().numpy()]]
 
             print('Epoch-{:<3d} {:.1f}s\t'
-                  'Train: loss {:.4f}\taccu {:.4f}\tValid: loss {:.4f}\taccu {:.4f}'
-                  .format(epoch + 1, time.time() - t_start, train_loss, train_acc, val_loss, val_acc))
+                'Train: loss {:.4f}\taccu {:.4f}\tValid: loss {:.4f}\taccu {:.4f}'
+                .format(epoch + 1, time.time() - t_start, train_loss, train_acc, val_loss, val_acc))
 
             current = val_loss if mode == 'min' else val_acc
 
@@ -134,8 +140,8 @@ def main():
 
             if monitor_op(current, best):
                 print('Epoch %d: %s %sd from %.4f to %.4f, '
-                      'saving model to %s'
-                      % (epoch + 1, args.monitor, str_op, best, current, checkpoint))
+                    'saving model to %s'
+                    % (epoch + 1, args.monitor, str_op, best, current, checkpoint))
                 best = current
                 best_epoch = epoch + 1
                 save_checkpoint({
@@ -151,6 +157,7 @@ def main():
                 earlystop_cnt += 1
 
             scheduler.step()
+            scheduler_clip.step()
 
         print('Best %s: %.4f from epoch-%d' % (args.monitor, best, best_epoch))
         with open(csv_file, 'w') as fw:
@@ -163,9 +170,9 @@ def main():
     args.train = 0
     model = SGN(args.num_classes, args.dataset, args.seg, args)
     model = model.cuda()
-    test(test_loader, model, checkpoint, lable_path, pred_path, model_clip, ntu120_text_tokens)
+    test(test_loader, model, checkpoint, lable_path, pred_path, model_clip)
 
-def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, model_clip, ntu120_text_tokens):
+def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, model_clip):
     losses = AverageMeter()
     acces = AverageMeter()
     model.train()
@@ -181,7 +188,7 @@ def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, mode
         if cfgs['cfgs']['network']=='SGN_CLIP':
             loss = criterion_clip(sekeleton_embeddings, target)
             target = target.cuda()
-            acc = accuracy_clip(sekeleton_embeddings.data, target, model_clip, ntu120_text_tokens)
+            acc = accuracy_clip(sekeleton_embeddings.data, target, model_clip)
         
         # measure accuracy and record loss
         if cfgs['cfgs']['network']=='SGN':
@@ -206,7 +213,7 @@ def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, mode
     return losses.avg, acces.avg
 
 
-def validate(val_loader, model, criterion, criterion_clip, model_clip, ntu120_text_tokens):
+def validate(val_loader, model, criterion, criterion_clip, model_clip):
     losses = AverageMeter()
     acces = AverageMeter()
     model.eval()
@@ -220,7 +227,7 @@ def validate(val_loader, model, criterion, criterion_clip, model_clip, ntu120_te
         with torch.no_grad():
             if cfgs['cfgs']['network']=='SGN_CLIP':
                 loss = criterion_clip(sekeleton_embeddings, target)
-                acc = accuracy_clip(sekeleton_embeddings.data, target, model_clip, ntu120_text_tokens)
+                acc = accuracy_clip(sekeleton_embeddings.data, target, model_clip)
             if cfgs['cfgs']['network']=='SGN':
                 loss=criterion(output,target)
                 acc = accuracy(output.data, target)
@@ -232,7 +239,7 @@ def validate(val_loader, model, criterion, criterion_clip, model_clip, ntu120_te
     return losses.avg, acces.avg
 
 
-def test(test_loader, model, checkpoint, lable_path, pred_path,model_clip, ntu120_text_tokens):
+def test(test_loader, model, checkpoint, lable_path, pred_path,model_clip):
     acces = AverageMeter()
     # load learnt model that obtained best performance on validation set
     model.load_state_dict(torch.load(checkpoint)['state_dict'])
@@ -257,7 +264,7 @@ def test(test_loader, model, checkpoint, lable_path, pred_path,model_clip, ntu12
         if cfgs['cfgs']['network']=='SGN':
             acc = accuracy(output.data, target.cuda())
         if cfgs['cfgs']['network']=='SGN_CLIP':
-            acc=accuracy_clip(skeleton_embedding.data, target, model_clip, ntu120_text_tokens)
+            acc=accuracy_clip(skeleton_embedding.data, target, model_clip)
         acces.update(acc[0], inputs.size(0))
 
 
@@ -267,7 +274,7 @@ def test(test_loader, model, checkpoint, lable_path, pred_path,model_clip, ntu12
     np.savetxt(pred_path, pred_output, fmt='%f')
 
     print('Test: accuracy {:.3f}, time: {:.2f}s'
-          .format(acces.avg, time.time() - t_start))
+        .format(acces.avg, time.time() - t_start))
 
 
 def accuracy(output, target):
@@ -279,9 +286,9 @@ def accuracy(output, target):
 
     return correct.mul_(100.0 / batch_size)
 
-def accuracy_clip(skeleton_embedding, target, model_clip, ntu120_text_tokens):
+def accuracy_clip(skeleton_embedding, target, model_clip):
     batch_size = target.size(0)
-    clip_text_embeddings=model_clip.encode_text(ntu120_text_tokens).t() #[512,120]
+    clip_text_embeddings=model_clip.encode_text(model_clip.ntu120_text_tokens()).t() #[512,120]
     clip_text_embeddings=clip_text_embeddings.unsqueeze(0).expand(batch_size, 512, 120)
     #print(clip_text_embeddings.shape)#[bs,512,120]
     
@@ -355,10 +362,10 @@ class LabelSmoothingLoss(nn.Module):
         return torch.mean(torch.sum(-true_dist * pred, dim=self.dim))
 
 class CLIPLoss(nn.Module):
-    def __init__(self, model_clip, ntu120_text_tokens, type='cosine_similarity'):
+    def __init__(self, model_clip, type='cosine_similarity'):
         super(CLIPLoss, self).__init__()
         self.model_clip=model_clip
-        self.ntu120_text_tokens=ntu120_text_tokens
+        self.ntu120_text_tokens=model_clip.ntu120_text_tokens()
         self.type=type
         
     def forward(self, skeleton_embeddings, target):
@@ -378,7 +385,34 @@ class CLIPLoss(nn.Module):
             loss = cross_entropy
         
         return loss
+
+class CLIPTrainLoss(nn.Module):
+    def __init__(self):
+        super(CLIPTrainLoss, self).__init__()
     
+    def forward(self, skeleton_embeddings, text_embeddings):
+        # extract feature representations of each modality
+        bs=skeleton_embeddings.shape[0]
+        text_features = text_embeddings/text_embeddings.norm(dim=-1, keepdim=True) #[bs,120,512]
+        skeleton_features = skeleton_embeddings/skeleton_embeddings.norm(dim=-1, keepdim=True) #[bs,120,20,512]
+        skeleton_features = skeleton_features.mean(dim=2) #[bs,120,512]
+        
+        # cosine similarity as logits
+        logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+        logit_scale = logit_scale.exp()
+        
+        loss=0.0
+        for i in range(0,bs):
+            logits_per_skeleton = logit_scale * (text_features[i,:,:].type(torch.LongTensor).to(skeleton_features.device) @ skeleton_features[i,:,:].type(torch.LongTensor).t())
+            labels = torch.tensor(np.arange(120))
+            loss_i = 10*F.cross_entropy(logits_per_skeleton,labels)
+            loss+=loss_i
+        
+        loss=loss_i/bs
+        
+        return loss
+    
+        
 if __name__ == '__main__':
     main()
     
