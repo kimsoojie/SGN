@@ -51,7 +51,7 @@ def main():
 
     args.num_classes = get_num_classes(args.dataset)
     model = SGN(args.num_classes, args.dataset, args.seg, args)
-    #model.load_state_dict(torch.load('results_cs/NTU120/SGN/0_best.pth')['state_dict'])
+    model.load_state_dict(torch.load('results_cv/NTU120/SGN/1_best.pth')['state_dict'])
     
     model_clip = CLIP()
     
