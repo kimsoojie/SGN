@@ -222,10 +222,13 @@ class CLIP(nn.Module):
         super(CLIP, self).__init__()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.clip_model, self.clip_preprocess = clip.load("ViT-B/32", device=self.device)
+        
         if cfgs['cfgs']['clip_train'] == False:
             self.clip_model.eval()
-            for p in self.clip_model.parameters():
-                p.requires_grad = False
+            
+        for p in self.clip_model.parameters():
+            p.requires_grad = cfgs['cfgs']['clip_train']
+                
         self.ntu120_action_classes = get_ntu120_action_classes()
         print(self.ntu120_action_classes)
         

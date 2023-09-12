@@ -3,7 +3,7 @@ cfgs:
     #network: "SGN_CLIP"
     dataset: "NTU120"
     case: 0
-    batch_size: 64 #400
+    batch_size: 70 #400
     max_epochs: 120
     monitor: "val_acc"
     lr: 0.001
