@@ -4,7 +4,7 @@ import argparse
 import time
 import shutil
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import os.path as osp
 import csv
 import numpy as np
@@ -67,9 +67,8 @@ def main():
         print('It is using GPU!')
         model = model.cuda()
         model_clip = model_clip.cuda()
-        if torch.cuda.device_count() > 1:
-            #model = nn.DataParallel(model)
-            model_clip = nn.DataParallel(model_clip)
+        #if torch.cuda.device_count() > 1:
+        #    model_clip = nn.DataParallel(model_clip)
             
     criterion = LabelSmoothingLoss(args.num_classes, smoothing=0.1).cuda()
     
@@ -254,7 +253,7 @@ def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, mode
             sekeleton_embeddings = sekeleton_embeddings.view(bs,120,20,512)
             
             loss_clip = criterion_clip(sekeleton_embeddings, _targets)
-            action_class=model_clip.module.action_classes()
+            action_class=model_clip.action_classes()
             acc_clip = accuracy_clip_train(sekeleton_embeddings.data.to(_targets.device), _targets, action_class)
             
             losses_clip.update(loss_clip.item(), _inputs.size(0))
@@ -318,7 +317,7 @@ def validate(val_loader, model, criterion, criterion_clip, model_clip):
                     sekeleton_embeddings[:,_i,:,:] = sekeleton_embedding.view(bs,20,512)
             
                 loss_clip = criterion_clip(sekeleton_embeddings, _targets)
-                action_class=model_clip.module.action_classes()
+                action_class=model_clip.action_classes()
                 acc_clip = accuracy_clip_train(sekeleton_embeddings.data.to(_targets.device), _targets, action_class)
                 
             losses_clip.update(loss_clip.item(), _inputs.size(0))
@@ -373,7 +372,7 @@ def test(test_loader, model, checkpoint, checkpoint_clip, lable_path, pred_path,
                 for _i in range(0,120):
                     output, sekeleton_embedding = model(_inputs[:,_i,:,:].cuda())
                     sekeleton_embeddings[:,_i,:,:] = sekeleton_embedding.view(bs,20,512)
-                action_class=model_clip.module.action_classes()
+                action_class=model_clip.action_classes()
                 acc_clip = accuracy_clip_train(sekeleton_embeddings.data.to(_targets.device), _targets,action_class)
                 acces_clip.update(acc_clip[0], _inputs.size(0))
 
@@ -490,7 +489,7 @@ def get_data_for_clip_finetuning(model_clip, train_loader):
                 if k==120: break
         b+=1
     
-    text_features=model_clip(model_clip.module.ntu120_text_tokens())
+    text_features=model_clip(model_clip.ntu120_text_tokens())
     text_features=text_features.unsqueeze(0).expand(bs,-1,-1)#[bs,120,512]
     
     _inputs=inputs_list120 #[bs,120,20,75]
