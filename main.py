@@ -4,12 +4,12 @@ import argparse
 import time
 import shutil
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
 import os.path as osp
 import csv
 import numpy as np
 
-np.random.seed(1337)
+#np.random.seed(1337)
 
 import torch
 import torch.nn as nn
@@ -67,15 +67,22 @@ def main():
         print('It is using GPU!')
         model = model.cuda()
         model_clip = model_clip.cuda()
+        if torch.cuda.device_count() > 1:
+            #model = nn.DataParallel(model)
+            model_clip = nn.DataParallel(model_clip)
             
     criterion = LabelSmoothingLoss(args.num_classes, smoothing=0.1).cuda()
+    
     if cfgs['cfgs']['clip_train'] == False:
         criterion_clip=CLIPLoss(model_clip,type='cross_entropy').cuda()
     elif cfgs['cfgs']['clip_train'] == True:
         criterion_clip=CLIPTrainLoss().cuda()
+    
         
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    optimizer_clip = optim.Adam(model_clip.parameters(), lr=5e-5,betas=(0.9,0.98),eps=1e-6,weight_decay=0.2)
+    optimizer_clip=None
+    if cfgs['cfgs']['clip_train'] == True:
+        optimizer_clip = optim.Adam(model_clip.parameters(), lr=5e-5,betas=(0.9,0.98),eps=1e-6,weight_decay=0.2)
     
     if args.monitor == 'val_acc':
         mode = 'max'
@@ -89,7 +96,8 @@ def main():
         str_op = 'reduce'
 
     scheduler = MultiStepLR(optimizer, milestones=[60, 90, 110], gamma=0.1)
-    scheduler_clip = MultiStepLR(optimizer_clip, milestones=[60, 90, 110], gamma=0.1)
+    if cfgs['cfgs']['clip_train'] == True:
+        scheduler_clip = MultiStepLR(optimizer_clip, milestones=[60, 90, 110], gamma=0.1)
     
     # Data loading
     ntu_loaders = NTUDataLoaders(args.dataset, args.case, seg=args.seg)
@@ -110,6 +118,8 @@ def main():
         os.makedirs(save_path)
 
     checkpoint = osp.join(save_path, '%s_best.pth' % args.case)
+    checkpoint_clip = osp.join(save_path, '%s_best_clip.pth' % args.case)
+    
     earlystop_cnt = 0
     csv_file = osp.join(save_path, '%s_log.csv' % args.case)
     log_res = list()
@@ -124,8 +134,8 @@ def main():
             print(epoch, optimizer.param_groups[0]['lr'])
 
             t_start = time.time()
-            train_loss, train_acc = train(train_loader, model, criterion, criterion_clip, optimizer, epoch, model_clip)
-            val_loss, val_acc = validate(val_loader, model, criterion, criterion_clip, model_clip)
+            train_loss, train_acc, train_loss_clip, train_acc_clip = train(train_loader, model, criterion, criterion_clip, optimizer, epoch, model_clip, optimizer_clip=optimizer_clip)
+            val_loss, val_acc, val_loss_clip, val_acc_clip = validate(val_loader, model, criterion, criterion_clip, model_clip)
             log_res += [[train_loss, train_acc.cpu().numpy(),\
                         val_loss, val_acc.cpu().numpy()]]
 
@@ -151,13 +161,22 @@ def main():
                     'monitor': args.monitor,
                     'optimizer': optimizer.state_dict(),
                 }, checkpoint)
+                if cfgs['cfgs']['clip_train'] == True:
+                    save_checkpoint({
+                        'epoch': epoch + 1,
+                        'state_dict': model_clip.state_dict(),
+                        'best': best,
+                        'monitor': args.monitor,
+                        'optimizer': optimizer_clip.state_dict(),
+                    }, checkpoint_clip)
                 earlystop_cnt = 0
             else:
                 print('Epoch %d: %s did not %s' % (epoch + 1, args.monitor, str_op))
                 earlystop_cnt += 1
 
             scheduler.step()
-            scheduler_clip.step()
+            if cfgs['cfgs']['clip_train'] == True:
+                scheduler_clip.step()
 
         print('Best %s: %.4f from epoch-%d' % (args.monitor, best, best_epoch))
         with open(csv_file, 'w') as fw:
@@ -170,26 +189,28 @@ def main():
     args.train = 0
     model = SGN(args.num_classes, args.dataset, args.seg, args)
     model = model.cuda()
-    test(test_loader, model, checkpoint, lable_path, pred_path, model_clip)
+    model_clip = CLIP()
+    model_clip = model_clip.cuda()
+    test(test_loader, model, checkpoint, checkpoint_clip, lable_path, pred_path, model_clip)
 
-def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, model_clip):
+def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, model_clip, optimizer_clip=None):
     losses = AverageMeter()
     acces = AverageMeter()
     model.train()
     
     for i, (inputs, target) in enumerate(train_loader):
         #input:[bs,20,75]
-        output, sekeleton_embeddings = model(inputs.cuda()) #sekeleton_embeddings:[bs, 512, 1, 20]
+        output, sekeleton_embeddings = model(inputs.cuda())  #sekeleton_embeddings:[bs, 512, 1, 20]
         #print(target.shape)#[bs]
         #print(inputs.shape)#[bs,20,75]
-        
+  
         #target:[bs]
         #target = target.cuda(async = True)
         if cfgs['cfgs']['network']=='SGN_CLIP':
             loss = criterion_clip(sekeleton_embeddings, target)
             target = target.cuda()
             acc = accuracy_clip(sekeleton_embeddings.data, target, model_clip)
-        
+            
         # measure accuracy and record loss
         if cfgs['cfgs']['network']=='SGN':
             target = target.cuda()
@@ -210,7 +231,46 @@ def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, mode
                   'accu {acc.val:.3f} ({acc.avg:.3f})'.format(
                    epoch + 1, i + 1, loss=losses, acc=acces))
 
-    return losses.avg, acces.avg
+        #======================================================================
+        # For Clip Text Encoder Fine-tuning
+        #======================================================================
+        losses_clip = AverageMeter()
+        acces_clip = AverageMeter()
+    
+        if cfgs['cfgs']['clip_train'] == True:
+            model_clip.train()
+            
+            _inputs, _targets = get_data_for_clip_finetuning(model_clip, train_loader)
+            #_inputs:[bs,120,20,75]
+            #_targets:[bs,120,512]
+            
+            bs = _inputs.shape[0]
+            sekeleton_embeddings=torch.zeros((120,bs,20,512))
+            for _i in range(0,120):
+                output, sekeleton_embedding = model(_inputs[:,_i,:,:].cuda()) 
+                sekeleton_embedding=sekeleton_embedding.view(bs,20,512)
+                sekeleton_embeddings[_i,:,:,:] = sekeleton_embedding[:,:,:]
+            
+            sekeleton_embeddings = sekeleton_embeddings.view(bs,120,20,512)
+            
+            loss_clip = criterion_clip(sekeleton_embeddings, _targets)
+            acc_clip = accuracy_clip_train(sekeleton_embeddings.data.to(_targets.device), _targets)
+            
+            losses_clip.update(loss_clip.item(), _inputs.size(0))
+            acces_clip.update(acc_clip[0], _inputs.size(0))
+            
+            # backward
+            optimizer_clip.zero_grad()  # clear gradients out before each mini-batch
+            loss_clip.backward()
+            optimizer_clip.step()
+
+            if (i + 1) % args.print_freq == 0:
+                print('clip-Epoch-{:<3d} {:3d} clip-batches\t'
+                    'clip-loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                    'clip-accu {acc.val:.3f} ({acc.avg:.3f})'.format(
+                    epoch + 1, i + 1, loss=losses_clip, acc=acces_clip))
+        
+    return losses.avg, acces.avg, losses_clip.avg, acces_clip.avg
 
 
 def validate(val_loader, model, criterion, criterion_clip, model_clip):
@@ -219,10 +279,10 @@ def validate(val_loader, model, criterion, criterion_clip, model_clip):
     model.eval()
 
     for i, (inputs, target) in enumerate(val_loader):
-        with torch.no_grad():
-            output, sekeleton_embeddings = model(inputs.cuda())
         target = target.cuda()
         
+        with torch.no_grad():
+            output, sekeleton_embeddings = model(inputs.cuda())
         
         with torch.no_grad():
             if cfgs['cfgs']['network']=='SGN_CLIP':
@@ -235,15 +295,45 @@ def validate(val_loader, model, criterion, criterion_clip, model_clip):
         # measure accuracy and record loss
         losses.update(loss.item(), inputs.size(0))
         acces.update(acc[0], inputs.size(0))
+        
+        #======================================================================
+        # For Clip Text Encoder Fine-tuning
+        #======================================================================
+        losses_clip = AverageMeter()
+        acces_clip = AverageMeter()
+    
+        if cfgs['cfgs']['clip_train'] == True:
+            model_clip.eval()
+            
+            with torch.no_grad():
+                _inputs, _targets = get_data_for_clip_finetuning(model_clip, val_loader)
+                #_inputs:[bs,120,20,75]
+                #_targets:[bs,120,512]
+                
+                bs = _inputs.shape[0]
+                sekeleton_embeddings=torch.zeros((bs,120,20,512))
+                for _i in range(0,120):
+                    output, sekeleton_embedding = model(_inputs[:,_i,:,:].cuda()) 
+                    sekeleton_embeddings[:,_i,:,:] = sekeleton_embedding.view(bs,20,512)
+            
+                loss_clip = criterion_clip(sekeleton_embeddings, _targets)
+                acc_clip = accuracy_clip_train(sekeleton_embeddings.data.to(_targets.device), _targets)
+                
+            losses_clip.update(loss_clip.item(), _inputs.size(0))
+            acces_clip.update(acc_clip[0], _inputs.size(0))
 
-    return losses.avg, acces.avg
+    return losses.avg, acces.avg,losses_clip.avg, acces_clip.avg
 
 
-def test(test_loader, model, checkpoint, lable_path, pred_path,model_clip):
+def test(test_loader, model, checkpoint, checkpoint_clip, lable_path, pred_path, model_clip):
     acces = AverageMeter()
+    acces_clip = AverageMeter()
     # load learnt model that obtained best performance on validation set
     model.load_state_dict(torch.load(checkpoint)['state_dict'])
     model.eval()
+    
+    model_clip.load_state_dict(torch.load(checkpoint_clip)['state_dict'])
+    model_clip.eval()
 
     label_output = list()
     pred_output = list()
@@ -264,9 +354,26 @@ def test(test_loader, model, checkpoint, lable_path, pred_path,model_clip):
         if cfgs['cfgs']['network']=='SGN':
             acc = accuracy(output.data, target.cuda())
         if cfgs['cfgs']['network']=='SGN_CLIP':
-            acc=accuracy_clip(skeleton_embedding.data, target, model_clip)
+            acc = accuracy_clip(skeleton_embedding.data, target, model_clip)
         acces.update(acc[0], inputs.size(0))
 
+        #======================================================================
+        # For Clip Text Encoder Fine-tuning
+        #======================================================================
+        if cfgs['cfgs']['clip_train']==True:
+            with torch.no_grad():
+                _inputs, _targets = get_data_for_clip_finetuning(model_clip, test_loader)
+                #_inputs:[bs,120,20,75]
+                #_targets:[bs,120,512]
+                
+                bs = _inputs.shape[0]
+                sekeleton_embeddings=torch.zeros((bs,120,20,512))
+                for _i in range(0,120):
+                    output, sekeleton_embedding = model(_inputs[:,_i,:,:].cuda())
+                    sekeleton_embeddings[:,_i,:,:] = sekeleton_embedding.view(bs,20,512)
+                
+                acc_clip = accuracy_clip_train(sekeleton_embeddings.data.to(_targets.device), _targets)
+                acces_clip.update(acc_clip[0], _inputs.size(0))
 
     label_output = np.concatenate(label_output, axis=0)
     np.savetxt(lable_path, label_output, fmt='%d')
@@ -275,6 +382,10 @@ def test(test_loader, model, checkpoint, lable_path, pred_path,model_clip):
 
     print('Test: accuracy {:.3f}, time: {:.2f}s'
         .format(acces.avg, time.time() - t_start))
+    
+    if cfgs['cfgs']['clip_train']==True:
+        print('Test (clip): accuracy {:.3f}, time: {:.2f}s'
+            .format(acces_clip.avg, time.time() - t_start))
 
 
 def accuracy(output, target):
@@ -283,7 +394,6 @@ def accuracy(output, target):
     pred = pred.t()
     correct = pred.eq(target.view(1, -1).expand_as(pred))
     correct = correct.view(-1).float().sum(0, keepdim=True)
-
     return correct.mul_(100.0 / batch_size)
 
 def accuracy_clip(skeleton_embedding, target, model_clip):
@@ -330,7 +440,53 @@ def accuracy_clip(skeleton_embedding, target, model_clip):
     
     return acc
 
+def accuracy_clip_train(skeleton_embeddings, targets):
+    bs=skeleton_embeddings.shape[0] 
+    text_embeddings=targets #[bs,120,512]
+    skeleton_embeddings=torch.mean(skeleton_embeddings,dim=2) #.view(bs,120,512) #[bs,120,512]
+    
+    cnt=0
+    for k in range(0,bs):
+        text_features = text_embeddings[k,:,:]/text_embeddings[k,:,:].norm(dim=-1, keepdim=True)
+        skeleton_features = skeleton_embeddings[k,:,:]/skeleton_embeddings[k,:,:].norm(dim=-1, keepdim=True) #[120,512]
+        
+        similarity = (100.0 * skeleton_features.to(float) @ text_features.to(float).T).softmax(dim=-1) #[120,120]
+        for i in range(0,120):
+            _, topk_idx = torch.tensor(similarity[i,:]).topk(5, -1, True, True)
+            if i in topk_idx:
+                cnt+=1
+        
+    correct=[1]
+    correct[0]=100*(cnt/(bs*120))
+    acc=torch.tensor(correct)
+    
+    return acc
 
+def get_data_for_clip_finetuning(model_clip, train_loader):
+    k=0
+    b=0
+    bs=cfgs['cfgs']['batch_size']
+    inputs_list120=torch.zeros((bs,120,20,75))
+
+    while b < bs:
+        while k < 120:
+            for _i, (_inputs, _target) in enumerate(train_loader):
+                for j in range(0,bs):
+                    if _target[j] == k:
+                        inputs_list120[b,k,:,:]=_inputs[j,:,:]
+                        k+=1
+                        if k==120: break
+                if k==120: break
+        b+=1
+    
+    text_features=model_clip(model_clip.module.ntu120_text_tokens())
+    text_features=text_features.unsqueeze(0).expand(bs,-1,-1)#[bs,120,512]
+    
+    _inputs=inputs_list120 #[bs,120,20,75]
+    _targets=text_features #[bs,120,512]
+    
+    return _inputs, _targets
+            
 def save_checkpoint(state, filename='checkpoint.pth.tar', is_best=False):
     torch.save(state, filename)
     if is_best:
@@ -403,12 +559,11 @@ class CLIPTrainLoss(nn.Module):
         
         loss=0.0
         for i in range(0,bs):
-            logits_per_skeleton = logit_scale * (text_features[i,:,:].type(torch.LongTensor).to(skeleton_features.device) @ skeleton_features[i,:,:].type(torch.LongTensor).t())
+            logits = logit_scale * (text_features[i,:,:].type(torch.DoubleTensor).to(skeleton_features.device) @ skeleton_features[i,:,:].type(torch.DoubleTensor).t())
             labels = torch.tensor(np.arange(120))
-            loss_i = 10*F.cross_entropy(logits_per_skeleton,labels)
-            loss+=loss_i
+            loss += (10*F.cross_entropy(logits,labels))
         
-        loss=loss_i/bs
+        loss/=bs
         
         return loss
     

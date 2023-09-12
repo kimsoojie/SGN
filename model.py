@@ -15,7 +15,6 @@ with open('config.yaml', 'r') as file:
 class SGN(nn.Module):
     def __init__(self, num_classes, dataset, seg, args, bias = True):
         super(SGN, self).__init__()
-
         self.dim1 = 256
         self.dataset = dataset
         self.seg = seg
@@ -234,6 +233,7 @@ class CLIP(nn.Module):
         self.ln_final = self.clip_model.ln_final
         self.text_projection = self.clip_model.text_projection
         self.dtype = self.clip_model.dtype
+        self.token_embedding=self.clip_model.token_embedding
         
         
     def load(self):
@@ -242,14 +242,14 @@ class CLIP(nn.Module):
     def encode_text(self, tokens):
         if cfgs['cfgs']['clip_train'] == False:
             return self.clip_model.encode_text(tokens)
-        return self._encode_text(tokens)
+        return self.forward(tokens)
     
     def ntu120_text_tokens(self):
         return clip.tokenize(self.ntu120_action_classes).to(self.device) #[120,77]
     
-    def _encode_text(self, tokens):
-        x = tokens.type(self.dtype)  # [batch_size, n_ctx, d_model]
-
+    def forward(self, tokens):
+        x = self.token_embedding(tokens).type(self.dtype)  # [batch_size, n_ctx, d_model]
+        
         x = x + self.positional_embedding.type(self.dtype)
         x = x.permute(1, 0, 2)  # NLD -> LND
         x = self.transformer(x)
@@ -259,6 +259,6 @@ class CLIP(nn.Module):
         # x.shape = [batch_size, n_ctx, transformer.width]
         # take features from the eot embedding (eot_token is the highest number in each sequence)
         x = x[torch.arange(x.shape[0]), tokens.argmax(dim=-1)] @ self.text_projection
-
+        
         return x
     
