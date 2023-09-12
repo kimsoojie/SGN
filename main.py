@@ -453,12 +453,8 @@ def accuracy_clip_train(skeleton_embeddings, targets, action_classes):
         text_features = text_embeddings[k,:,:]/text_embeddings[k,:,:].norm(dim=-1, keepdim=True)
         skeleton_features = skeleton_embeddings[k,:,:]/skeleton_embeddings[k,:,:].norm(dim=-1, keepdim=True) #[120,512]
         
-        #similarity = (100.0 * (skeleton_features.to(float) @ text_features.to(float).T)).softmax(dim=-1) #[120,120]
-        
-        logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
-        logit_scale = logit_scale.exp()
-        similarity = (logit_scale * (text_features.type(torch.DoubleTensor) @ skeleton_features.type(torch.DoubleTensor).t())).softmax(dim=-1)
-            
+        similarity = (100.0 * (text_features.type(torch.DoubleTensor) @ skeleton_features.type(torch.DoubleTensor).t())).softmax(dim=-1)
+     
         rnd_idx=random.randint(0,119)
         for i in range(0,120):
             _, topk_idx = torch.tensor(similarity).topk(5, -1, True, True)
