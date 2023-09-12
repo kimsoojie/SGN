@@ -561,7 +561,7 @@ class CLIPTrainLoss(nn.Module):
         for i in range(0,bs):
             logits = logit_scale * (text_features[i,:,:].type(torch.DoubleTensor).to(skeleton_features.device) @ skeleton_features[i,:,:].type(torch.DoubleTensor).t())
             labels = torch.tensor(np.arange(120))
-            loss += (10*F.cross_entropy(logits,labels))
+            loss += F.cross_entropy(logits,labels)
         
         loss/=bs
         
