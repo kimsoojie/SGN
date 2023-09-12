@@ -227,6 +227,7 @@ class CLIP(nn.Module):
             for p in self.clip_model.parameters():
                 p.requires_grad = False
         self.ntu120_action_classes = get_ntu120_action_classes()
+        print(self.ntu120_action_classes)
         
         self.transformer = self.clip_model.transformer
         self.positional_embedding = self.clip_model.positional_embedding
@@ -243,6 +244,9 @@ class CLIP(nn.Module):
         if cfgs['cfgs']['clip_train'] == False:
             return self.clip_model.encode_text(tokens)
         return self.forward(tokens)
+    
+    def action_classes(self):
+        return self.ntu120_action_classes
     
     def ntu120_text_tokens(self):
         return clip.tokenize(self.ntu120_action_classes).to(self.device) #[120,77]

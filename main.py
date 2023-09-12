@@ -254,7 +254,8 @@ def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, mode
             sekeleton_embeddings = sekeleton_embeddings.view(bs,120,20,512)
             
             loss_clip = criterion_clip(sekeleton_embeddings, _targets)
-            acc_clip = accuracy_clip_train(sekeleton_embeddings.data.to(_targets.device), _targets)
+            action_class=model_clip.module.action_classes()
+            acc_clip = accuracy_clip_train(sekeleton_embeddings.data.to(_targets.device), _targets, action_class)
             
             losses_clip.update(loss_clip.item(), _inputs.size(0))
             acces_clip.update(acc_clip[0], _inputs.size(0))
@@ -317,7 +318,8 @@ def validate(val_loader, model, criterion, criterion_clip, model_clip):
                     sekeleton_embeddings[:,_i,:,:] = sekeleton_embedding.view(bs,20,512)
             
                 loss_clip = criterion_clip(sekeleton_embeddings, _targets)
-                acc_clip = accuracy_clip_train(sekeleton_embeddings.data.to(_targets.device), _targets)
+                action_class=model_clip.module.action_classes()
+                acc_clip = accuracy_clip_train(sekeleton_embeddings.data.to(_targets.device), _targets, action_class)
                 
             losses_clip.update(loss_clip.item(), _inputs.size(0))
             acces_clip.update(acc_clip[0], _inputs.size(0))
@@ -371,8 +373,8 @@ def test(test_loader, model, checkpoint, checkpoint_clip, lable_path, pred_path,
                 for _i in range(0,120):
                     output, sekeleton_embedding = model(_inputs[:,_i,:,:].cuda())
                     sekeleton_embeddings[:,_i,:,:] = sekeleton_embedding.view(bs,20,512)
-                
-                acc_clip = accuracy_clip_train(sekeleton_embeddings.data.to(_targets.device), _targets)
+                action_class=model_clip.module.action_classes()
+                acc_clip = accuracy_clip_train(sekeleton_embeddings.data.to(_targets.device), _targets,action_class)
                 acces_clip.update(acc_clip[0], _inputs.size(0))
 
     label_output = np.concatenate(label_output, axis=0)
@@ -440,21 +442,30 @@ def accuracy_clip(skeleton_embedding, target, model_clip):
     
     return acc
 
-def accuracy_clip_train(skeleton_embeddings, targets):
+def accuracy_clip_train(skeleton_embeddings, targets, action_classes):
     bs=skeleton_embeddings.shape[0] 
     text_embeddings=targets #[bs,120,512]
-    skeleton_embeddings=torch.mean(skeleton_embeddings,dim=2) #.view(bs,120,512) #[bs,120,512]
+    skeleton_embeddings=torch.mean(skeleton_embeddings,dim=2) #[bs,120,512]
     
     cnt=0
+    target_text=""
+    pred_text=""
     for k in range(0,bs):
         text_features = text_embeddings[k,:,:]/text_embeddings[k,:,:].norm(dim=-1, keepdim=True)
         skeleton_features = skeleton_embeddings[k,:,:]/skeleton_embeddings[k,:,:].norm(dim=-1, keepdim=True) #[120,512]
         
-        similarity = (100.0 * skeleton_features.to(float) @ text_features.to(float).T).softmax(dim=-1) #[120,120]
+        similarity = (100.0 * (skeleton_features.to(float) @ text_features.to(float).T)).softmax(dim=-1) #[120,120]
+
+        rnd_idx=random.randint(0,119)
         for i in range(0,120):
-            _, topk_idx = torch.tensor(similarity[i,:]).topk(5, -1, True, True)
-            if i in topk_idx:
+            _, topk_idx = torch.tensor(similarity).topk(5, -1, True, True)
+            topk_idx=topk_idx.cpu().numpy()
+            if i in topk_idx[0]:
                 cnt+=1
+            if i==rnd_idx:
+                target_text=action_classes[int(i)]
+                pred_text=action_classes[int(topk_idx[0][0])]
+    print('target:',target_text,' / pred:',pred_text)
         
     correct=[1]
     correct[0]=100*(cnt/(bs*120))
