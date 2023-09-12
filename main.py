@@ -4,7 +4,7 @@ import argparse
 import time
 import shutil
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 import os.path as osp
 import csv
 import numpy as np
@@ -454,17 +454,19 @@ def accuracy_clip_train(skeleton_embeddings, targets, action_classes):
         skeleton_features = skeleton_embeddings[k,:,:]/skeleton_embeddings[k,:,:].norm(dim=-1, keepdim=True) #[120,512]
         
         similarity = (100.0 * (text_features.type(torch.DoubleTensor) @ skeleton_features.type(torch.DoubleTensor).t())).softmax(dim=-1)
-     
+        
+        topk_val, topk_idx = torch.tensor(similarity).topk(5, -1, True, True) #[120,5]
+        topk_idx = topk_idx.cpu().numpy()
         rnd_idx=random.randint(0,119)
         for i in range(0,120):
-            _, topk_idx = torch.tensor(similarity).topk(5, -1, True, True)
-            topk_idx=topk_idx.cpu().numpy()
-            if i in topk_idx[0]:
+            if i in topk_idx[i]:
                 cnt+=1
             if i==rnd_idx:
                 target_text=action_classes[int(i)]
-                pred_text=action_classes[int(topk_idx[0][0])]
+                pred_text=action_classes[int(topk_idx[i][0])]
+                #val=topk_val[i].cpu().numpy()
     print('target:',target_text,' / pred:',pred_text)
+    #print(val)
         
     correct=[1]
     correct[0]=100*(cnt/(bs*120))
