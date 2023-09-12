@@ -81,7 +81,7 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     optimizer_clip=None
     if cfgs['cfgs']['clip_train'] == True:
-        optimizer_clip = optim.Adam(model_clip.parameters(), lr=5e-3,betas=(0.9,0.98),eps=1e-6,weight_decay=0.2)
+        optimizer_clip = optim.Adam(model_clip.parameters(), lr=5e-7,betas=(0.9,0.98),eps=1e-6,weight_decay=0.2)
     
     if args.monitor == 'val_acc':
         mode = 'max'
@@ -559,13 +559,14 @@ class CLIPTrainLoss(nn.Module):
     def forward(self, skeleton_embeddings, text_embeddings):
         # extract feature representations of each modality
         bs=skeleton_embeddings.shape[0]
-        skeleton_embeddings = skeleton_embeddings.mean(dim=2) #[bs,120,512]
-        text_features = text_embeddings/text_embeddings.norm(dim=-1, keepdim=True,p=2) #[bs,120,512]
-        skeleton_features = skeleton_embeddings/skeleton_embeddings.norm(dim=-1, keepdim=True,p=2) #[bs,120,20,512]
+        skeleton_embeddings = skeleton_embeddings.mean(dim=2) #[bs,120,20,512]
+        text_features = text_embeddings/text_embeddings.norm(dim=-1, keepdim=True) #[bs,120,512]
+        skeleton_features = skeleton_embeddings/skeleton_embeddings.norm(dim=-1, keepdim=True) #[bs,120,512]
         
         # cosine similarity as logits
         logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
         logit_scale = logit_scale.exp()
+        #logit_scale=1.0
         
         loss=0.0
         for i in range(0,bs):
