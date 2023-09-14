@@ -200,7 +200,7 @@ def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, mode
     model.train()
     if cfgs['cfgs']['clip_train'] == True:
             model_clip.train()
-            
+    iter=0 
     for i, (inputs, target) in enumerate(train_loader):
         #input:[bs,20,75]
         output, sekeleton_embeddings = model(inputs.cuda())  #sekeleton_embeddings:[bs, 512, 1, 20]
@@ -270,7 +270,8 @@ def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, mode
                     'clip-loss {loss.val:.4f} ({loss.avg:.4f})\t'
                     'clip-accu {acc.val:.3f} ({acc.avg:.3f})'.format(
                     epoch + 1, i + 1, loss=losses_clip, acc=acces_clip))
-        
+        #if iter==3:break
+        #iter+=1
     return losses.avg, acces.avg, losses_clip.avg, acces_clip.avg
 
 
@@ -284,7 +285,7 @@ def validate(val_loader, model, criterion, criterion_clip, model_clip):
         model_clip.eval()
         
     model.eval()
-
+    iter=0
     for i, (inputs, target) in enumerate(val_loader):
         target = target.cuda()
         
@@ -324,7 +325,8 @@ def validate(val_loader, model, criterion, criterion_clip, model_clip):
                 
             losses_clip.update(loss_clip.item(), _inputs.size(0))
             acces_clip.update(acc_clip[0], _inputs.size(0))
-
+        #if iter==3:break
+        #iter+=1
     return losses.avg, acces.avg,losses_clip.avg, acces_clip.avg
 
 
@@ -341,7 +343,7 @@ def test(test_loader, model, checkpoint, checkpoint_clip, lable_path, pred_path,
 
     label_output = list()
     pred_output = list()
-
+    
     t_start = time.time()
     for i, (inputs, target) in enumerate(test_loader):
         with torch.no_grad():
@@ -456,24 +458,28 @@ def accuracy_clip_train(skeleton_embeddings, targets, action_classes):
         text_features = text_embeddings[k,:,:]/text_embeddings[k,:,:].norm(dim=-1, keepdim=True)
         skeleton_features = skeleton_embeddings[k,:,:]/skeleton_embeddings[k,:,:].norm(dim=-1, keepdim=True) #[120,512]
         
-        #rnd_idx=random.randint(0,119)
-        #for c in range(0,120):
-        #    similarity = (100.0 * (text_features.type(torch.DoubleTensor) @ skeleton_features[c,:].type(torch.DoubleTensor))).softmax(dim=-1)
-        #    topk_val, topk_idx = torch.tensor(similarity).topk(5, -1, True, True)
-        #    topk_idx = topk_idx.cpu().numpy()
-        #    #topk_val = topk_val.cpu().numpy()
-        #    if c in topk_idx:
-        #        cnt+=1
-        #    if c==rnd_idx:
-        #        target_text=action_classes[int(c)]
-        #        pred_text=action_classes[int(topk_idx[0])]
-        #        #val=topk_val[c].cpu().numpy()
-    #print('target:',target_text,' / pred:',pred_text)
-    #print(val)
+    #    rnd_idx=random.randint(0,119)
+    #    for c in range(0,120):
+    #        similarity = (100.0 * (skeleton_features[c,:].type(torch.DoubleTensor) @ text_features.type(torch.DoubleTensor).t())).softmax(dim=-1)
+    #        topk_val, topk_idx = torch.tensor(similarity).topk(5, -1, True, True)
+    #        
+    #        topk_idx = topk_idx.cpu().numpy()
+    #        topk_val = topk_val.cpu().numpy()
+    #        if c in topk_idx:
+    #            cnt+=1
+    #        if c==topk_idx[c][0]:
+    #            print('top1 pred:',action_classes[int(topk_idx[c][0])])
+    #            print('top5 prob: ', topk_val[c].cpu().numpy())
+    #        if c==rnd_idx:
+    #            target_text=action_classes[int(c)]
+    #            pred_text=action_classes[int(topk_idx[0])]
+    #            val=topk_val
+    ##print('target:',target_text,' / pred:',pred_text)
+    ##print(val)
     
     
     
-        similarity = (100.0 * (text_features.type(torch.DoubleTensor) @ skeleton_features.type(torch.DoubleTensor).t())).softmax(dim=-1)
+        similarity = (100.0 * (skeleton_features.type(torch.DoubleTensor) @ text_features.type(torch.DoubleTensor).t())).softmax(dim=-1)
         
         topk_val, topk_idx = torch.tensor(similarity).topk(5, -1, True, True) #[120,5]
         topk_idx = topk_idx.cpu().numpy()
@@ -481,6 +487,9 @@ def accuracy_clip_train(skeleton_embeddings, targets, action_classes):
         for i in range(0,120):
             if i in topk_idx[i]:
                 cnt+=1
+            if i==topk_idx[i][0]:
+                print('top1 pred:',action_classes[int(topk_idx[i][0])])
+                print('top5 prob: ', topk_val[i].cpu().numpy())
             if i==rnd_idx:
                 target_text=action_classes[int(i)]
                 pred_text=action_classes[int(topk_idx[i][0])]
@@ -577,6 +586,7 @@ class CLIPLoss(nn.Module):
 class CLIPTrainLoss(nn.Module):
     def __init__(self):
         super(CLIPTrainLoss, self).__init__()
+        self.loss_ce = nn.CrossEntropyLoss()
     
     def forward(self, skeleton_embeddings, text_embeddings):
         # extract feature representations of each modality
@@ -591,10 +601,16 @@ class CLIPTrainLoss(nn.Module):
         
         loss=0.0
         for i in range(0,bs):
-            logits = logit_scale * (text_features[i,:,:].type(torch.DoubleTensor).to(skeleton_features.device) @ skeleton_features[i,:,:].type(torch.DoubleTensor).t())
+            
+            logits1 = logit_scale * (skeleton_features[i,:,:].type(torch.DoubleTensor) @ text_features[i,:,:].type(torch.DoubleTensor).t().to(skeleton_features.device))
+            logits2=logits1.t()
             labels = torch.tensor(np.arange(120))
-            loss += F.cross_entropy(logits,labels)
-        
+            
+            ce_from_motion_loss = self.loss_ce(logits1, labels)
+            ce_from_d_loss = self.loss_ce(logits2, labels)
+            clip_mixed_loss = (ce_from_motion_loss + ce_from_d_loss) / 2.
+            loss += clip_mixed_loss
+            
         loss/=bs
         
         return loss

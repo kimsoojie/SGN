@@ -232,7 +232,7 @@ class CLIP(nn.Module):
         self.ntu120_action_classes = get_ntu120_action_classes()
         print(self.ntu120_action_classes)
         
-        self.transformer = self.clip_model.transformer
+        self.transformer = self.clip_model.transformer 
         self.positional_embedding = self.clip_model.positional_embedding
         self.ln_final = self.clip_model.ln_final
         self.text_projection = self.clip_model.text_projection

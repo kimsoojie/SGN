@@ -1,120 +1,120 @@
-A1. drink water.
-A2. eat meal/snack.
-A3. brushing teeth.
-A4. brushing hair.
-A5. drop.
-A6. pickup.
-A7. throw.
-A8. sitting down.
-A9. standing up (from sitting position).
-A10. clapping.
-A11. reading.
-A12. writing.
-A13. tear up paper.
-A14. wear jacket.
-A15. take off jacket.
-A16. wear a shoe.
-A17. take off a shoe.
-A18. wear on glasses.
-A19. take off glasses.
-A20. put on a hat/cap.
-A21. take off a hat/cap.
-A22. cheer up.
-A23. hand waving.
-A24. kicking something.
-A25. reach into pocket.
-A26. hopping (one foot jumping).
-A27. jump up.
-A28. make a phone call/answer phone.
-A29. playing with phone/tablet.
-A30. typing on a keyboard.
-A31. pointing to something with finger.
-A32. taking a selfie.
-A33. check time (from watch).
-A34. rub two hands together.
-A35. nod head/bow.
-A36. shake head.
-A37. wipe face.
-A38. salute.
-A39. put the palms together.
-A40. cross hands in front (say stop).
-A41. sneeze/cough.
-A42. staggering.
-A43. falling.
-A44. touch head (headache).
-A45. touch chest (stomachache/heart pain).
-A46. touch back (backache).
-A47. touch neck (neckache).
-A48. nausea or vomiting condition.
-A49. use a fan (with hand or paper)/feeling warm.
-A50. punching/slapping other person.
-A51. kicking other person.
-A52. pushing other person.
-A53. pat on back of other person.
-A54. point finger at the other person.
-A55. hugging other person.
-A56. giving something to other person.
-A57. touch other person's pocket.
-A58. handshaking.
-A59. walking towards each other.
-A60. walking apart from each other.
-A61. put on headphone.
-A62. take off headphone.
-A63. shoot at the basket.
-A64. bounce ball.
-A65. tennis bat swing.
-A66. juggling table tennis balls.
-A67. hush (quite).
-A68. flick hair.
-A69. thumb up.
-A70. thumb down.
-A71. make ok sign.
-A72. make victory sign.
-A73. staple book.
-A74. counting money.
-A75. cutting nails.
-A76. cutting paper (using scissors).
-A77. snapping fingers.
-A78. open bottle.
-A79. sniff (smell).
-A80. squat down.
-A81. toss a coin.
-A82. fold paper.
-A83. ball up paper.
-A84. play magic cube.
-A85. apply cream on face.
-A86. apply cream on hand back.
-A87. put on bag.
-A88. take off bag.
-A89. put something into a bag.
-A90. take something out of a bag.
-A91. open a box.
-A92. move heavy objects.
-A93. shake fist.
-A94. throw up cap/hat.
-A95. hands up (both hands).
-A96. cross arms.
-A97. arm circles.
-A98. arm swings.
-A99. running on the spot.
-A100. butt kicks (kick backward).
-A101. cross toe touch.
-A102. side kick.
-A103. yawn.
-A104. stretch oneself.
-A105. blow nose.
-A106. hit other person with something.
-A107. wield knife towards other person.
-A108. knock over other person (hit with body).
-A109. grab other person’s stuff.
-A110. shoot at other person with a gun.
-A111. step on foot.
-A112. high-five.
-A113. cheers and drink.
-A114. carry something with other person.
-A115. take a photo of other person.
-A116. follow other person.
-A117. whisper in other person’s ear.
-A118. exchange things with other person.
-A119. support somebody with hand.
-A120. finger-guessing game (playing rock-paper-scissors).
+A1. a photo of drinking water.
+A2. a photo of eating a meal/snack.
+A3. a photo of brushing teeth.
+A4. a photo of brushing hair.
+A5. a photo of dropping.
+A6. a photo of picking up.
+A7. a photo of throwing.
+A8. a photo of sitting down.
+A9. a photo of standing up (from sitting position).
+A10. a photo of clapping.
+A11. a photo of reading.
+A12. a photo of writing.
+A13. a photo of tearing up paper.
+A14. a photo of wearing a jacket.
+A15. a photo of taking off a jacket.
+A16. a photo of wearing a shoe.
+A17. a photo of taking off a shoe.
+A18. a photo of wearing glasses.
+A19. a photo of taking off glasses.
+A20. a photo of putting on a hat/cap.
+A21. a photo of taking off a hat/cap.
+A22. a photo of cheering up.
+A23. a photo of hand waving.
+A24. a photo of kicking something.
+A25. a photo of reaching into a pocket.
+A26. a photo of hopping (one foot jumping).
+A27. a photo of jumping up.
+A28. a photo of making a phone call/answering the phone.
+A29. a photo of playing with a phone/tablet.
+A30. a photo of typing on a keyboard.
+A31. a photo of pointing to something with a finger.
+A32. a photo of taking a selfie.
+A33. a photo of checking the time (from a watch).
+A34. a photo of rubbing two hands together.
+A35. a photo of nodding head/bowing.
+A36. a photo of shaking head.
+A37. a photo of wiping face.
+A38. a photo of saluting.
+A39. a photo of putting the palms together.
+A40. a photo of crossing hands in front (saying stop).
+A41. a photo of sneezing/coughing.
+A42. a photo of staggering.
+A43. a photo of falling.
+A44. a photo of touching head (headache).
+A45. a photo of touching chest (stomachache/heart pain).
+A46. a photo of touching back (backache).
+A47. a photo of touching neck (neckache).
+A48. a photo of nausea or vomiting condition.
+A49. a photo of using a fan (with hand or paper)/feeling warm.
+A50. a photo of punching/slapping another person.
+A51. a photo of kicking another person.
+A52. a photo of pushing another person.
+A53. a photo of patting the back of another person.
+A54. a photo of pointing a finger at the other person.
+A55. a photo of hugging another person.
+A56. a photo of giving something to another person.
+A57. a photo of touching another person's pocket.
+A58. a photo of handshaking.
+A59. a photo of walking towards each other.
+A60. a photo of walking apart from each other.
+A61. a photo of putting on headphones.
+A62. a photo of taking off headphones.
+A63. a photo of shooting at the basket.
+A64. a photo of bouncing a ball.
+A65. a photo of swinging a tennis bat.
+A66. a photo of juggling table tennis balls.
+A67. a photo of hushing (quiet).
+A68. a photo of flicking hair.
+A69. a photo of giving a thumb up.
+A70. a photo of giving a thumb down.
+A71. a photo of making an OK sign.
+A72. a photo of making a victory sign.
+A73. a photo of stapling a book.
+A74. a photo of counting money.
+A75. a photo of cutting nails.
+A76. a photo of cutting paper (using scissors).
+A77. a photo of snapping fingers.
+A78. a photo of opening a bottle.
+A79. a photo of sniffing (smelling).
+A80. a photo of squatting down.
+A81. a photo of tossing a coin.
+A82. a photo of folding paper.
+A83. a photo of balling up paper.
+A84. a photo of playing with a magic cube.
+A85. a photo of applying cream on a face.
+A86. a photo of applying cream on the back of a hand.
+A87. a photo of putting on a bag.
+A88. a photo of taking off a bag.
+A89. a photo of putting something into a bag.
+A90. a photo of taking something out of a bag.
+A91. a photo of opening a box.
+A92. a photo of moving heavy objects.
+A93. a photo of shaking a fist.
+A94. a photo of throwing up a cap/hat.
+A95. a photo of raising hands (both hands).
+A96. a photo of crossing arms.
+A97. a photo of making arm circles.
+A98. a photo of swinging arms.
+A99. a photo of running in place.
+A100. a photo of doing butt kicks (kicking backward).
+A101. a photo of doing a cross toe touch.
+A102. a photo of doing a side kick.
+A103. a photo of yawning.
+A104. a photo of stretching oneself.
+A105. a photo of blowing one's nose.
+A106. a photo of hitting another person with something.
+A107. a photo of wielding a knife towards another person.
+A108. a photo of knocking over another person (hitting with the body).
+A109. a photo of grabbing another person’s stuff.
+A110. a photo of shooting at another person with a gun.
+A111. a photo of stepping on someone's foot.
+A112. a photo of giving a high-five.
+A113. a photo of cheers and drinking.
+A114. a photo of carrying something with another person.
+A115. a photo of taking a photo of another person.
+A116. a photo of following another person.
+A117. a photo of whispering in another person’s ear.
+A118. a photo of exchanging things with another person.
+A119. a photo of supporting somebody with a hand.
+A120. a photo of playing a finger-guessing game (rock-paper-scissors).
