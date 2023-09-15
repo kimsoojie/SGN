@@ -4,7 +4,7 @@ import argparse
 import time
 import shutil
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 import os.path as osp
 import csv
 import numpy as np
@@ -488,14 +488,18 @@ def accuracy_clip_train(skeleton_embeddings, targets, action_classes):
             if i in topk_idx[i]:
                 cnt+=1
             if i==topk_idx[i][0]:
-                print('top1 pred:',action_classes[int(topk_idx[i][0])])
-                print('top5 prob: ', topk_val[i].cpu().numpy())
+                #print('top1 pred:',action_classes[int(topk_idx[i][0])])
+                #print('top5 prob: ', topk_val[i].cpu().numpy())
+                top1pred=action_classes[int(topk_idx[i][0])]
+                top5prob=topk_val[i].cpu().numpy()
             if i==rnd_idx:
                 target_text=action_classes[int(i)]
                 pred_text=action_classes[int(topk_idx[i][0])]
                 val=topk_val[i].cpu().numpy()
-    print('target:',target_text,' / pred:',pred_text)
-    print(val)
+    #print('target:',target_text,' / pred:',pred_text)
+    #print(val)
+    print('top1 pred: ',top1pred)
+    print('top5 prob: ', top5prob)
         
     correct=[1]
     correct[0]=100*(cnt/(bs*120))
