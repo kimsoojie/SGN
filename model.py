@@ -90,12 +90,19 @@ class SGN(nn.Module):
         input = input + tem1
         input = self.cnn(input) #torch.Size([bs, 512, 1, 20])
         
-        sekeleton_embedding=input
+        #sekeleton_embedding=input
         
         # Classification
+        #print(input.shape)#torch.Size([bs, 512, 1, 20])
         output = self.maxpool(input)
-        output = torch.flatten(output, 1) #[512,512]
+        #print(output.shape)#torch.Size([sb, 512, 1, 1])
+        output = torch.flatten(output, 1) #[bs,512]
+        
+        sekeleton_embedding = output
+        
+        #print(output.shape)#torch.Size([bs, 512])
         output = self.fc(output)
+        #print(output.shape)#torch.Size([bs, 120])
         #torch.Size([bs,120])
         
         return output, sekeleton_embedding
