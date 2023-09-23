@@ -11,7 +11,7 @@ class SGN(nn.Module):
         self.dim1 = 256
         self.dataset = dataset
         self.seg = seg
-        num_joint = 25
+        num_joint = 25 #25
         bs = args.batch_size
         if args.train:
             self.spa = self.one_hot(bs, num_joint, self.seg)
@@ -47,6 +47,15 @@ class SGN(nn.Module):
 
 
     def forward(self, input):
+        #print(input.shape)#[32, 3, 20, 638]
+        #soojie
+        #print(input.shape) #[bs,step,60]
+        #bs, step, dim = input.size()
+        #new_shape = (bs,step, 75)
+        #new_tensor = torch.zeros(new_shape, dtype=input.dtype)
+        #new_tensor[:, :, :dim] = input
+        #input=new_tensor.to(input.device)
+        #print(input.shape)#[bs,step,75]
         
         # Dynamic Representation
         bs, step, dim = input.size()
@@ -55,6 +64,8 @@ class SGN(nn.Module):
         input = input.permute(0, 3, 2, 1).contiguous()
         dif = input[:, :, :, 1:] - input[:, :, :, 0:-1]
         dif = torch.cat([dif.new(bs, dif.size(1), num_joints, 1).zero_(), dif], dim=-1)
+        
+
         pos = self.joint_embed(input)
         tem1 = self.tem_embed(self.tem)
         spa1 = self.spa_embed(self.spa)
@@ -64,17 +75,24 @@ class SGN(nn.Module):
         input= torch.cat([dy, spa1], 1)
         g = self.compute_g1(input)
         input = self.gcn1(input, g)
+        #print(1,input.shape)
         input = self.gcn2(input, g)
+        #print(2,input.shape)
         input = self.gcn3(input, g)
+        #print(3,input.shape)
         # Frame-level Module
         input = input + tem1
         input = self.cnn(input)
+        #print(4,input.shape)
         # Classification
         output = self.maxpool(input)
+        #print(5,output.shape)
         output = torch.flatten(output, 1)
+        #print(6,output.shape)
+        action_features = output.clone()
         output = self.fc(output)
-
-        return output
+        #print(7,output.shape)
+        return output, action_features
 
     def one_hot(self, bs, spa, tem):
 
@@ -92,7 +110,6 @@ class SGN(nn.Module):
 class norm_data(nn.Module):
     def __init__(self, dim= 64):
         super(norm_data, self).__init__()
-
         self.bn = nn.BatchNorm1d(dim* 25)
 
     def forward(self, x):

@@ -13,20 +13,25 @@ np.random.seed(1337)
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau, MultiStepLR
 from model import SGN
+from model_fc import ActionText
+import clip
 from data import NTUDataLoaders, AverageMeter
 import fit
 from util import make_dir, get_num_classes
+from label_text import text
+
 
 parser = argparse.ArgumentParser(description='Skeleton-Based Action Recgnition')
 fit.add_fit_args(parser)
 parser.set_defaults(
     network='SGN',
-    dataset = 'NTU',
+    dataset = 'NTU120',
     case = 0,
-    batch_size=64,
+    batch_size=512,
     max_epochs=120,
     monitor='val_acc',
     lr=0.001,
@@ -39,11 +44,53 @@ parser.set_defaults(
     )
 args = parser.parse_args()
 
+
+
+def load_and_freeze_clip(clip_version):
+    clip_model, clip_preprocess = clip.load(clip_version, device='cpu',
+                                            jit=False)  # Must set jit=False for training
+    clip.model.convert_weights(
+        clip_model)  # Actually this line is unnecessary since clip by default already on float16
+
+    # Freeze CLIP weights
+    clip_model.eval()
+    for p in clip_model.parameters():
+        p.requires_grad = False
+
+    return clip_model
+    
+def encoded_text(clip_model, text):
+    text_token = tokenize(text)
+    enc_text = clip_model.encode_text(text_token).float()
+    return enc_text
+
+def encoded_text_normalized(clip_model, text):
+    enc_text = encoded_text(clip_model, text)
+    normalized_vector = F.normalize(enc_text, p=2, dim=1)
+    return normalized_vector
+
+def tokenize(raw_text, device="cuda"):
+    max_text_len = 20
+
+    default_context_length = 77
+    context_length = max_text_len + 2 # start_token + 20 + end_token
+    assert context_length < default_context_length
+    texts = clip.tokenize(raw_text, context_length=context_length, truncate=True).to(device) # [bs, context_length] # if n_tokens > context_length -> will truncate
+    # print('texts', texts.shape)
+    zero_pad = torch.zeros([texts.shape[0], default_context_length-context_length], dtype=texts.dtype, device=texts.device)
+    texts = torch.cat([texts, zero_pad], dim=1)
+    return texts
+
+
+clip_model = load_and_freeze_clip("ViT-B/32")
+clip_model = clip_model.cuda()
+text_embed = encoded_text(clip_model, text)
+
 def main():
 
     args.num_classes = get_num_classes(args.dataset)
     model = SGN(args.num_classes, args.dataset, args.seg, args)
-
+    model_fc = ActionText()
     total = get_n_params(model)
     print(model)
     print('The number of parameters: ', total)
@@ -52,9 +99,14 @@ def main():
     if torch.cuda.is_available():
         print('It is using GPU!')
         model = model.cuda()
+        model_fc = model_fc.cuda()
 
     criterion = LabelSmoothingLoss(args.num_classes, smoothing=0.1).cuda()
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = optim.Adam(
+        model_fc.parameters(), 
+        lr=args.lr, 
+        weight_decay=args.weight_decay
+    )
 
     if args.monitor == 'val_acc':
         mode = 'max'
@@ -70,6 +122,7 @@ def main():
     scheduler = MultiStepLR(optimizer, milestones=[60, 90, 110], gamma=0.1)
     # Data loading
     ntu_loaders = NTUDataLoaders(args.dataset, args.case, seg=args.seg)
+
     train_loader = ntu_loaders.get_train_loader(args.batch_size, args.workers)
     val_loader = ntu_loaders.get_val_loader(args.batch_size, args.workers)
     train_size = ntu_loaders.get_train_size()
@@ -78,7 +131,7 @@ def main():
 
     test_loader = ntu_loaders.get_test_loader(32, args.workers)
 
-    print('Train on %d samples, validate on %d samples' % (train_size, val_size))
+    #print('Train on %d samples, validate on %d samples' % (train_size, val_size))
 
     best_epoch = 0
     output_dir = make_dir(args.dataset)
@@ -96,14 +149,15 @@ def main():
     pred_path = osp.join(save_path, '%s_pred.txt' % args.case)
 
     # Training
+    model.load_state_dict(torch.load(checkpoint)['state_dict'])
     if args.train ==1:
         for epoch in range(args.start_epoch, args.max_epochs):
 
             print(epoch, optimizer.param_groups[0]['lr'])
 
             t_start = time.time()
-            train_loss, train_acc = train(train_loader, model, criterion, optimizer, epoch)
-            val_loss, val_acc = validate(val_loader, model, criterion)
+            train_loss, train_acc = train(train_loader, model, model_fc, criterion, optimizer, epoch)
+            val_loss, val_acc = validate(val_loader, model, model_fc, criterion)
             log_res += [[train_loss, train_acc.cpu().numpy(),\
                          val_loss, val_acc.cpu().numpy()]]
 
@@ -124,11 +178,11 @@ def main():
                 best_epoch = epoch + 1
                 save_checkpoint({
                     'epoch': epoch + 1,
-                    'state_dict': model.state_dict(),
+                    'state_dict': model_fc.state_dict(),
                     'best': best,
                     'monitor': args.monitor,
                     'optimizer': optimizer.state_dict(),
-                }, checkpoint)
+                }, checkpoint.replace(".pth", "_fc.pth"))
                 earlystop_cnt = 0
             else:
                 print('Epoch %d: %s did not %s' % (epoch + 1, args.monitor, str_op))
@@ -147,22 +201,28 @@ def main():
     args.train = 0
     model = SGN(args.num_classes, args.dataset, args.seg, args)
     model = model.cuda()
-    test(test_loader, model, checkpoint, lable_path, pred_path)
+    model_fc = ActionText()
+    model_fc = model_fc.cuda()
+    test(test_loader, model, model_fc, checkpoint, lable_path, pred_path)
 
 
-def train(train_loader, model, criterion, optimizer, epoch):
+def train(train_loader, model, model_fc, criterion, optimizer, epoch):
     losses = AverageMeter()
     acces = AverageMeter()
-    model.train()
+    model.eval()
+    model_fc.train()
 
     for i, (inputs, target) in enumerate(train_loader):
+        #print(inputs.shape)
+        _, action_features = model(inputs.cuda())
+        output = model_fc(action_features.detach())
+        cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed.unsqueeze(0), dim=2)
+        target = target.cuda()
 
-        output = model(inputs.cuda())
-        target = target.cuda(async = True)
-        loss = criterion(output, target)
-
+        loss = criterion(cosine_sim, target)
+        
         # measure accuracy and record loss
-        acc = accuracy(output.data, target)
+        acc = accuracy(cosine_sim.data, target)
         losses.update(loss.item(), inputs.size(0))
         acces.update(acc[0], inputs.size(0))
 
@@ -180,31 +240,39 @@ def train(train_loader, model, criterion, optimizer, epoch):
     return losses.avg, acces.avg
 
 
-def validate(val_loader, model, criterion):
+def validate(val_loader, model, model_fc, criterion):
     losses = AverageMeter()
     acces = AverageMeter()
     model.eval()
+    model_fc.eval()
 
     for i, (inputs, target) in enumerate(val_loader):
         with torch.no_grad():
-            output = model(inputs.cuda())
-        target = target.cuda(async=True)
+            output, action_features = model(inputs.cuda())
+            output = model_fc(action_features.detach())
+            cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed.unsqueeze(0), dim=2)
+        target = target.cuda()
         with torch.no_grad():
-            loss = criterion(output, target)
+            loss = criterion(cosine_sim, target)
 
         # measure accuracy and record loss
-        acc = accuracy(output.data, target)
+        acc = accuracy(cosine_sim.data, target)
         losses.update(loss.item(), inputs.size(0))
         acces.update(acc[0], inputs.size(0))
 
     return losses.avg, acces.avg
 
 
-def test(test_loader, model, checkpoint, lable_path, pred_path):
+def test(test_loader, model, model_fc, checkpoint, lable_path, pred_path):
     acces = AverageMeter()
+    acces2 = AverageMeter()
     # load learnt model that obtained best performance on validation set
+    # model.load_state_dict(torch.load(checkpoint.replace(".pth", "_new.pth"))['state_dict'])
     model.load_state_dict(torch.load(checkpoint)['state_dict'])
     model.eval()
+    # model_fc.load_state_dict(torch.load(checkpoint.replace(".pth", "_new_fc.pth"))['state_dict'])
+    model_fc.load_state_dict(torch.load(checkpoint.replace(".pth", "_fc.pth"))['state_dict'])
+    model_fc.eval()
 
     label_output = list()
     pred_output = list()
@@ -212,15 +280,26 @@ def test(test_loader, model, checkpoint, lable_path, pred_path):
     t_start = time.time()
     for i, (inputs, target) in enumerate(test_loader):
         with torch.no_grad():
-            output = model(inputs.cuda())
-            output = output.view((-1, inputs.size(0)//target.size(0), output.size(1)))
-            output = output.mean(1)
+            #print(inputs.shape)
+            output2, action_features = model(inputs.cuda())
+            output = model_fc(action_features)
+            cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed.unsqueeze(0), dim=2)
+            cosine_sim = cosine_sim.view((-1, inputs.size(0)//target.size(0), cosine_sim.size(1)))
+            cosine_sim = cosine_sim.mean(1)
+            #print('test:', cosine_sim.shape, output2.shape, output.shape)
+            #output2 = output2.view((-1, inputs.size(0)//target.size(0), output2.size(1)))
+            #output2 = output2.mean(1)
+            #cosine_sim = (cosine_sim+output2)/2            
 
         label_output.append(target.cpu().numpy())
-        pred_output.append(output.cpu().numpy())
+        #pred_output.append(output2.cpu().numpy())
+        pred_output.append(cosine_sim.cpu().numpy())
 
-        acc = accuracy(output.data, target.cuda(async=True))
+        acc = accuracy(cosine_sim.data, target.cuda())
+        #acc = accuracy(output2.data, target.cuda())
         acces.update(acc[0], inputs.size(0))
+        acc2 = accuracy(cosine_sim.data, target.cuda())
+        acces2.update(acc2[0], inputs.size(0))
 
 
     label_output = np.concatenate(label_output, axis=0)
@@ -230,7 +309,8 @@ def test(test_loader, model, checkpoint, lable_path, pred_path):
 
     print('Test: accuracy {:.3f}, time: {:.2f}s'
           .format(acces.avg, time.time() - t_start))
-
+    print('Test (New): accuracy {:.3f}, time: {:.2f}s'
+          .format(acces2.avg, time.time() - t_start))
 
 def accuracy(output, target):
     batch_size = target.size(0)
@@ -238,7 +318,9 @@ def accuracy(output, target):
     pred = pred.t()
     correct = pred.eq(target.view(1, -1).expand_as(pred))
     correct = correct.view(-1).float().sum(0, keepdim=True)
-
+  
+    #for i in range(0,batch_size):
+    #    print(text[pred[0,i]],'/',text[target[i]])
     return correct.mul_(100.0 / batch_size)
 
 def save_checkpoint(state, filename='checkpoint.pth.tar', is_best=False):
@@ -270,6 +352,9 @@ class LabelSmoothingLoss(nn.Module):
             true_dist.fill_(self.smoothing / (self.cls - 1))
             true_dist.scatter_(1, target.data.unsqueeze(1), self.confidence)
         return torch.mean(torch.sum(-true_dist * pred, dim=self.dim))
+
+
+
 
 if __name__ == '__main__':
     main()

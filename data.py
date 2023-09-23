@@ -83,6 +83,14 @@ class NTUDataLoaders(object):
             elif self.case == 1:
                 self.metric = 'CV'
             path = osp.join('./data/ntu', 'NTU_' + self.metric + '.h5')
+        if self.dataset == 'NTU120':
+            if self.case ==0:
+                self.metric = 'CS'
+            elif self.case == 1:
+                self.metric = 'CV'
+            elif self.case == 2:
+                self.metric = 'SETTUP'
+            path = osp.join('./data/ntu/ntu120', 'NTU_' + self.metric + '.h5')
 
         f = h5py.File(path , 'r')
         self.train_X = f['x'][:]
