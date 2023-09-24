@@ -82,7 +82,9 @@ class NTUDataLoaders(object):
                 self.metric = 'CS'
             elif self.case == 1:
                 self.metric = 'CV'
-            path = osp.join('./data/ntu', 'NTU_' + self.metric + '.h5')
+            elif self.case == 2:
+                self.metric = 'SETTUP'
+            path = osp.join('./data/ntu/ntu60', 'NTU_' + self.metric + '.h5')
         if self.dataset == 'NTU120':
             if self.case ==0:
                 self.metric = 'CS'
@@ -129,6 +131,8 @@ class NTUDataLoaders(object):
                 theta = 0.3
             elif self.case == 1:
                 theta = 0.5
+            elif self.case == 2:
+                theta = 0.3
         elif self.dataset == 'NTU120':
             theta = 0.3
 
