@@ -11,7 +11,8 @@ class SGN(nn.Module):
         self.dim1 = 256
         self.dataset = dataset
         self.seg = seg
-        num_joint = 25 #25
+        num_joint = 25
+        
         bs = args.batch_size
         if args.train:
             self.spa = self.one_hot(bs, num_joint, self.seg)
@@ -24,10 +25,10 @@ class SGN(nn.Module):
             self.tem = self.one_hot(32 * 5, self.seg, num_joint)
             self.tem = self.tem.permute(0, 3, 1, 2).cuda()
 
-        self.tem_embed = embed(self.seg, 64*4, norm=False, bias=bias)
-        self.spa_embed = embed(num_joint, 64, norm=False, bias=bias)
-        self.joint_embed = embed(3, 64, norm=True, bias=bias)
-        self.dif_embed = embed(3, 64, norm=True, bias=bias)
+        self.tem_embed = embed(self.seg, 64*4, norm=False, bias=bias,dataset=dataset)
+        self.spa_embed = embed(num_joint, 64, norm=False, bias=bias,dataset=dataset)
+        self.joint_embed = embed(3, 64, norm=True, bias=bias,dataset=dataset)
+        self.dif_embed = embed(3, 64, norm=True, bias=bias,dataset=dataset)
         self.maxpool = nn.AdaptiveMaxPool2d((1, 1))
         self.cnn = local(self.dim1, self.dim1 * 2, bias=bias)
         self.compute_g1 = compute_g_spa(self.dim1 // 2, self.dim1, bias=bias)
@@ -108,9 +109,12 @@ class SGN(nn.Module):
         return y_onehot
 
 class norm_data(nn.Module):
-    def __init__(self, dim= 64):
+    def __init__(self, dim= 64, dataset=None):
         super(norm_data, self).__init__()
-        self.bn = nn.BatchNorm1d(dim* 25)
+        joint=25
+        if dataset=='SYSU':
+            joint=20
+        self.bn = nn.BatchNorm1d(dim* joint)
 
     def forward(self, x):
         bs, c, num_joints, step = x.size()
@@ -120,12 +124,12 @@ class norm_data(nn.Module):
         return x
 
 class embed(nn.Module):
-    def __init__(self, dim = 3, dim1 = 128, norm = True, bias = False):
+    def __init__(self, dim = 3, dim1 = 128, norm = True, bias = False,dataset=None):
         super(embed, self).__init__()
-
+       
         if norm:
             self.cnn = nn.Sequential(
-                norm_data(dim),
+                norm_data(dim, dataset),
                 cnn1x1(dim, 64, bias=bias),
                 nn.ReLU(),
                 cnn1x1(64, dim1, bias=bias),

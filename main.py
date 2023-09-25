@@ -4,7 +4,7 @@ import argparse
 import time
 import shutil
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = '1'
+os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 import os.path as osp
 import csv
 import numpy as np
@@ -22,14 +22,14 @@ import clip
 from data import NTUDataLoaders, AverageMeter
 import fit
 from util import make_dir, get_num_classes
-from label_text import text
+from label_text import text, text_sysu
 
 
 parser = argparse.ArgumentParser(description='Skeleton-Based Action Recgnition')
 fit.add_fit_args(parser)
 parser.set_defaults(
     network='SGN',
-    dataset = 'NTU',
+    dataset = 'NTU120',
     case = 0,
     batch_size=512,
     max_epochs=120,
@@ -85,6 +85,7 @@ def tokenize(raw_text, device="cuda"):
 clip_model = load_and_freeze_clip("ViT-B/32")
 clip_model = clip_model.cuda()
 text_embed = encoded_text(clip_model, text)
+text_embed_sysu = encoded_text(clip_model, text_sysu)
 
 def main():
 
@@ -121,15 +122,19 @@ def main():
 
     scheduler = MultiStepLR(optimizer, milestones=[60, 90, 110], gamma=0.1)
     # Data loading
-    ntu_loaders = NTUDataLoaders(args.dataset, args.case, seg=args.seg)
-
-    train_loader = ntu_loaders.get_train_loader(args.batch_size, args.workers)
-    val_loader = ntu_loaders.get_val_loader(args.batch_size, args.workers)
-    train_size = ntu_loaders.get_train_size()
-    val_size = ntu_loaders.get_val_size()
-
-
-    test_loader = ntu_loaders.get_test_loader(32, args.workers)
+    
+    #ntu_loaders = NTUDataLoaders(args.dataset, args.case, seg=args.seg)
+    ntu_loaders = NTUDataLoaders('SYSU', args.case, seg=args.seg)
+    
+    if args.train == 0:
+        test_loader = ntu_loaders.get_test_loader(32, args.workers)
+        
+    else:
+        train_loader = ntu_loaders.get_train_loader(args.batch_size, args.workers)
+        val_loader = ntu_loaders.get_val_loader(args.batch_size, args.workers)
+        train_size = ntu_loaders.get_train_size()
+        val_size = ntu_loaders.get_val_size()
+        test_loader = ntu_loaders.get_test_loader(32, args.workers)
 
     #print('Train on %d samples, validate on %d samples' % (train_size, val_size))
 
@@ -214,6 +219,7 @@ def train(train_loader, model, model_fc, criterion, optimizer, epoch):
 
     for i, (inputs, target) in enumerate(train_loader):
         #print(inputs.shape)
+        #print(target.shape)
         _, action_features = model(inputs.cuda())
         output = model_fc(action_features.detach())
         cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed.unsqueeze(0), dim=2)
@@ -280,10 +286,22 @@ def test(test_loader, model, model_fc, checkpoint, lable_path, pred_path):
     t_start = time.time()
     for i, (inputs, target) in enumerate(test_loader):
         with torch.no_grad():
-            #print(inputs.shape)
+            #print(inputs.shape)#torch.Size([160, 20, 60]):sysu/[160,20,75]:ntu120
+            #print(target.shape)#torch.Size([32]):sysu
+            sysu=False
+            if inputs.shape[2] == 60:
+                sysu=True
+                target_shape = [inputs.shape[0],inputs.shape[1],75]
+                new_inputs = np.zeros(target_shape)
+                new_inputs[:inputs.shape[0], :inputs.shape[1], :inputs.shape[2]] = inputs
+                inputs = torch.FloatTensor(new_inputs)
+               
             output2, action_features = model(inputs.cuda())
             output = model_fc(action_features)
-            cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed.unsqueeze(0), dim=2)
+            if sysu == True:
+                cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed_sysu.unsqueeze(0), dim=2)
+            else:
+                cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed.unsqueeze(0), dim=2)
             cosine_sim = cosine_sim.view((-1, inputs.size(0)//target.size(0), cosine_sim.size(1)))
             cosine_sim = cosine_sim.mean(1)
             #print('test:', cosine_sim.shape, output2.shape, output.shape)
@@ -301,7 +319,7 @@ def test(test_loader, model, model_fc, checkpoint, lable_path, pred_path):
         acc2 = accuracy(cosine_sim.data, target.cuda())
         acces2.update(acc2[0], inputs.size(0))
 
-
+    
     label_output = np.concatenate(label_output, axis=0)
     np.savetxt(lable_path, label_output, fmt='%d')
     pred_output = np.concatenate(pred_output, axis=0)

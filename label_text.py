@@ -120,3 +120,31 @@ text = [
     "a photo of supporting somebody with a hand", 
     "a photo of playing a finger-guessing game (rock-paper-scissors)", 
 ]
+
+text_sysu=[
+    #"a photo of drinking water",
+    #"a photo of pouring",
+    #"a photo of making a phone call",
+    #"a photo of playing with a phone",
+    #"a photo of putting on a bag",
+    #"a photo of putting something into a bag",
+    #"a photo of sitting down",
+    #"a photo of moving heavy objects",
+    #"a photo of reaching into a pocket",
+    #"a photo of taking something out of a wallet",
+    #"a photo of mopping",
+    #"a photo of sweeping"
+    
+    "drinking",
+    "pouring",
+    "calling phone",
+    "playing phone",
+    "wearing backpacks",
+    "packing backpacks",
+    "sitting chair",
+    "moving chair",
+    "taking out wallet",
+    "taking from wallet",
+    "mopping",
+    "sweeping"
+]

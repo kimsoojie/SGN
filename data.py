@@ -37,9 +37,12 @@ class NTUDataLoaders(object):
         self.aug = aug
         self.seg = seg
         self.create_datasets()
-        self.train_set = NTUDataset(self.train_X, self.train_Y)
-        self.val_set = NTUDataset(self.val_X, self.val_Y)
-        self.test_set = NTUDataset(self.test_X, self.test_Y)
+        if dataset == 'SYSU':
+            self.test_set = NTUDataset(self.test_X, self.test_Y)
+        else:
+            self.train_set = NTUDataset(self.train_X, self.train_Y)
+            self.val_set = NTUDataset(self.val_X, self.val_Y)
+            self.test_set = NTUDataset(self.test_X, self.test_Y)
 
     def get_train_loader(self, batch_size, num_workers):
         if self.aug == 0:
@@ -93,21 +96,38 @@ class NTUDataLoaders(object):
             elif self.case == 2:
                 self.metric = 'SETTUP'
             path = osp.join('./data/ntu/ntu120', 'NTU_' + self.metric + '.h5')
+        if self.dataset == 'SYSU':
+            path = osp.join('./data/sysu/SYSU.h5')
 
-        f = h5py.File(path , 'r')
-        self.train_X = f['x'][:]
-        self.train_Y = np.argmax(f['y'][:],-1)
-        self.val_X = f['valid_x'][:]
-        self.val_Y = np.argmax(f['valid_y'][:], -1)
-        self.test_X = f['test_x'][:]
-        self.test_Y = np.argmax(f['test_y'][:], -1)
-        f.close()
+        
+        if self.dataset == 'SYSU':
+            f = h5py.File(path , 'r')
+            self.test_X = f['test_x'][:]
+            self.test_Y = np.argmax(f['test_y'][:], -1)
+            #print(self.test_X.shape) #(480, 638, 60) #sysu
+            #print(self.test_Y.shape) #(480,) #sysu
+            f.close()
+            
+            self.val_X = self.test_X
+            self.val_Y = self.test_Y
+            
+        else:
+            f = h5py.File(path , 'r')
+            self.train_X = f['x'][:]
+            self.train_Y = np.argmax(f['y'][:],-1)
+            self.val_X = f['valid_x'][:]
+            self.val_Y = np.argmax(f['valid_y'][:], -1)
+            self.test_X = f['test_x'][:]
+            self.test_Y = np.argmax(f['test_y'][:], -1)
+            #print(self.test_X.shape) #(38021, 300, 150) #ntu120
+            #print(self.test_Y.shape) #(38021,) #ntu120
+            f.close()
 
-        ## Combine the training data and validation data togehter as ST-GCN
-        self.train_X = np.concatenate([self.train_X, self.val_X], axis=0)
-        self.train_Y = np.concatenate([self.train_Y, self.val_Y], axis=0)
-        self.val_X = self.test_X
-        self.val_Y = self.test_Y
+            ## Combine the training data and validation data togehter as ST-GCN
+            self.train_X = np.concatenate([self.train_X, self.val_X], axis=0)
+            self.train_Y = np.concatenate([self.train_Y, self.val_Y], axis=0)
+            self.val_X = self.test_X
+            self.val_Y = self.test_Y
 
     def collate_fn_fix_train(self, batch):
         """Puts each data field into a tensor with outer dimension batch size
@@ -163,8 +183,7 @@ class NTUDataLoaders(object):
         x, labels = self.Tolist_fix(x, y ,train=2)
         idx = range(len(x))
         y = np.array(y)
-
-
+        #print(x[0].shape)#(20,75);ntu120/(20,60):sysu
         x = torch.stack([torch.from_numpy(x[i]) for i in idx], 0)
         y = torch.LongTensor(y)
 
@@ -172,25 +191,28 @@ class NTUDataLoaders(object):
 
     def Tolist_fix(self, joints, y, train = 1):
         seqs = []
-
+        joint_dim=150
+        if self.dataset == 'SYSU':
+            joint_dim=20*3
+            
         for idx, seq in enumerate(joints):
             zero_row = []
             for i in range(len(seq)):
-                if (seq[i, :] == np.zeros((1, 150))).all():
+                if (seq[i, :] == np.zeros((1, joint_dim))).all():
                         zero_row.append(i)
 
             seq = np.delete(seq, zero_row, axis = 0)
-
-            seq = turn_two_to_one(seq)
+            #print(seq.shape) #[frame,150]:ntu120 / [frame,60];sysu
+            seq = turn_two_to_one(seq, self.dataset)
             seqs = self.sub_seq(seqs, seq, train=train)
 
         return seqs, y
 
     def sub_seq(self, seqs, seq , train = 1):
         group = self.seg
-
-        if self.dataset == 'SYSU' or self.dataset == 'SYSU_same':
-            seq = seq[::2, :]
+        #soojie
+        #if self.dataset == 'SYSU' or self.dataset == 'SYSU_same':
+        #    seq = seq[::2, :]
 
         if seq.shape[0] < self.seg:
             pad = np.zeros((self.seg - seq.shape[0], seq.shape[1])).astype(np.float32)
@@ -236,16 +258,28 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-def turn_two_to_one(seq):
+def turn_two_to_one(seq, dataset):
     new_seq = list()
-    for idx, ske in enumerate(seq):
-        if (ske[0:75] == np.zeros((1, 75))).all():
-            new_seq.append(ske[75:])
-        elif (ske[75:] == np.zeros((1, 75))).all():
-            new_seq.append(ske[0:75])
-        else:
-            new_seq.append(ske[0:75])
-            new_seq.append(ske[75:])
+    joint_num=75
+    if dataset == 'SYSU':
+        joint_num=60
+    
+    if dataset == 'SYSU':
+        for idx, ske in enumerate(seq):
+            if (ske[0:joint_num] == np.zeros((1, joint_num))).all():
+                new_seq.append(ske[joint_num:])
+            else:
+                new_seq.append(ske[0:joint_num])
+    else:
+        for idx, ske in enumerate(seq):
+            if (ske[0:joint_num] == np.zeros((1, joint_num))).all():
+                new_seq.append(ske[joint_num:])
+            elif (ske[joint_num:] == np.zeros((1, joint_num))).all():
+                new_seq.append(ske[0:joint_num])
+            else:
+                new_seq.append(ske[0:joint_num])
+                new_seq.append(ske[joint_num:])
+    #print(np.array(new_seq).shape) #[frame,75]:ntu120/[frame,60]
     return np.array(new_seq)
 
 def _rot(rot):
