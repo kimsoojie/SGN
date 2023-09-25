@@ -123,8 +123,8 @@ def main():
     scheduler = MultiStepLR(optimizer, milestones=[60, 90, 110], gamma=0.1)
     # Data loading
     
-    #ntu_loaders = NTUDataLoaders(args.dataset, args.case, seg=args.seg)
-    ntu_loaders = NTUDataLoaders('SYSU', args.case, seg=args.seg)
+    ntu_loaders = NTUDataLoaders(args.dataset, args.case, seg=args.seg)
+    #ntu_loaders = NTUDataLoaders('SYSU', args.case, seg=args.seg)
     
     if args.train == 0:
         test_loader = ntu_loaders.get_test_loader(32, args.workers)
