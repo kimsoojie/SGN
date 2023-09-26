@@ -27,6 +27,6 @@ def get_num_classes(dataset):
     elif dataset == 'NTU120':
         return 120
     elif dataset == 'SYSU':
-        return 120
+        return 12
 
     

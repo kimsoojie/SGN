@@ -23,15 +23,18 @@ from data import NTUDataLoaders, AverageMeter
 import fit
 from util import make_dir, get_num_classes
 from label_text import text, text_sysu
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 
 parser = argparse.ArgumentParser(description='Skeleton-Based Action Recgnition')
 fit.add_fit_args(parser)
 parser.set_defaults(
     network='SGN',
-    dataset = 'NTU120',
+    dataset = 'SYSU',
     case = 0,
-    batch_size=512,
+    batch_size=10,
     max_epochs=120,
     monitor='val_acc',
     lr=0.001,
@@ -123,18 +126,13 @@ def main():
     scheduler = MultiStepLR(optimizer, milestones=[60, 90, 110], gamma=0.1)
     # Data loading
     
+    #ntu_loaders = NTUDataLoaders(args.dataset, args.case, seg=args.seg)
     ntu_loaders = NTUDataLoaders(args.dataset, args.case, seg=args.seg)
-    #ntu_loaders = NTUDataLoaders('SYSU', args.case, seg=args.seg)
-    
-    if args.train == 0:
-        test_loader = ntu_loaders.get_test_loader(32, args.workers)
-        
-    else:
-        train_loader = ntu_loaders.get_train_loader(args.batch_size, args.workers)
-        val_loader = ntu_loaders.get_val_loader(args.batch_size, args.workers)
-        train_size = ntu_loaders.get_train_size()
-        val_size = ntu_loaders.get_val_size()
-        test_loader = ntu_loaders.get_test_loader(32, args.workers)
+    train_loader = ntu_loaders.get_train_loader(args.batch_size, args.workers)
+    val_loader = ntu_loaders.get_val_loader(args.batch_size, args.workers)
+    train_size = ntu_loaders.get_train_size()
+    val_size = ntu_loaders.get_val_size()
+    test_loader = ntu_loaders.get_test_loader(32, args.workers)
 
     #print('Train on %d samples, validate on %d samples' % (train_size, val_size))
 
@@ -161,8 +159,8 @@ def main():
             print(epoch, optimizer.param_groups[0]['lr'])
 
             t_start = time.time()
-            train_loss, train_acc = train(train_loader, model, model_fc, criterion, optimizer, epoch)
-            val_loss, val_acc = validate(val_loader, model, model_fc, criterion)
+            train_loss, train_acc = train(train_loader, model, model_fc, criterion, optimizer, epoch, args.dataset)
+            val_loss, val_acc = validate(val_loader, model, model_fc, criterion,args.dataset)
             log_res += [[train_loss, train_acc.cpu().numpy(),\
                          val_loss, val_acc.cpu().numpy()]]
 
@@ -208,10 +206,10 @@ def main():
     model = model.cuda()
     model_fc = ActionText()
     model_fc = model_fc.cuda()
-    test(test_loader, model, model_fc, checkpoint, lable_path, pred_path)
+    test(test_loader, model, model_fc, checkpoint, lable_path, pred_path, args.dataset)
 
 
-def train(train_loader, model, model_fc, criterion, optimizer, epoch):
+def train(train_loader, model, model_fc, criterion, optimizer, epoch, dataset):
     losses = AverageMeter()
     acces = AverageMeter()
     model.eval()
@@ -222,7 +220,10 @@ def train(train_loader, model, model_fc, criterion, optimizer, epoch):
         #print(target.shape)
         _, action_features = model(inputs.cuda())
         output = model_fc(action_features.detach())
-        cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed.unsqueeze(0), dim=2)
+        if dataset == 'SYSU':
+            cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed_sysu.unsqueeze(0), dim=2)
+        else:
+            cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed.unsqueeze(0), dim=2)
         target = target.cuda()
 
         loss = criterion(cosine_sim, target)
@@ -246,7 +247,7 @@ def train(train_loader, model, model_fc, criterion, optimizer, epoch):
     return losses.avg, acces.avg
 
 
-def validate(val_loader, model, model_fc, criterion):
+def validate(val_loader, model, model_fc, criterion, dataset):
     losses = AverageMeter()
     acces = AverageMeter()
     model.eval()
@@ -256,7 +257,10 @@ def validate(val_loader, model, model_fc, criterion):
         with torch.no_grad():
             output, action_features = model(inputs.cuda())
             output = model_fc(action_features.detach())
-            cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed.unsqueeze(0), dim=2)
+            if dataset == 'SYSU':
+                cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed_sysu.unsqueeze(0), dim=2)
+            else:
+                cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed.unsqueeze(0), dim=2)
         target = target.cuda()
         with torch.no_grad():
             loss = criterion(cosine_sim, target)
@@ -269,7 +273,7 @@ def validate(val_loader, model, model_fc, criterion):
     return losses.avg, acces.avg
 
 
-def test(test_loader, model, model_fc, checkpoint, lable_path, pred_path):
+def test(test_loader, model, model_fc, checkpoint, lable_path, pred_path, dataset):
     acces = AverageMeter()
     acces2 = AverageMeter()
     # load learnt model that obtained best performance on validation set
@@ -288,13 +292,14 @@ def test(test_loader, model, model_fc, checkpoint, lable_path, pred_path):
         with torch.no_grad():
             #print(inputs.shape)#torch.Size([160, 20, 60]):sysu/[160,20,75]:ntu120
             #print(target.shape)#torch.Size([32]):sysu
+            
             sysu=False
             if inputs.shape[2] == 60:
                 sysu=True
-                target_shape = [inputs.shape[0],inputs.shape[1],75]
-                new_inputs = np.zeros(target_shape)
-                new_inputs[:inputs.shape[0], :inputs.shape[1], :inputs.shape[2]] = inputs
-                inputs = torch.FloatTensor(new_inputs)
+                #target_shape = [inputs.shape[0],inputs.shape[1],75]
+                #new_inputs = np.zeros(target_shape)
+                #new_inputs[:inputs.shape[0], :inputs.shape[1], :inputs.shape[2]] = inputs
+                #inputs = torch.FloatTensor(new_inputs)
                
             output2, action_features = model(inputs.cuda())
             output = model_fc(action_features)
@@ -318,7 +323,22 @@ def test(test_loader, model, model_fc, checkpoint, lable_path, pred_path):
         acces.update(acc[0], inputs.size(0))
         acc2 = accuracy(cosine_sim.data, target.cuda())
         acces2.update(acc2[0], inputs.size(0))
-
+        
+        
+        _, pred = cosine_sim.data.topk(1, 1, True, True)
+        print(target.cpu().numpy())
+        print(pred.t().cpu().numpy()[0])
+        pred=pred.t().cpu().numpy()[0]
+        cm = confusion_matrix(target.cpu().numpy(), pred)
+        plt.figure(figsize=(10, 8))
+        sns.heatmap(cm, annot=True, fmt="d", cmap="Greys", xticklabels=np.arange(12), yticklabels=np.arange(12))
+        plt.xlabel("predicted label")
+        plt.ylabel("target label")
+        plt.title("SYSU skeleton action recognition (SGN+CLIP)")
+        plt.savefig(str(i)+'_confusion_matrix.jpg')
+        plt.close()
+    
+    
     
     label_output = np.concatenate(label_output, axis=0)
     np.savetxt(lable_path, label_output, fmt='%d')

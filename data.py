@@ -38,6 +38,8 @@ class NTUDataLoaders(object):
         self.seg = seg
         self.create_datasets()
         if dataset == 'SYSU':
+            self.train_set = NTUDataset(self.train_X, self.train_Y)
+            self.val_set = NTUDataset(self.val_X, self.val_Y)
             self.test_set = NTUDataset(self.test_X, self.test_Y)
         else:
             self.train_set = NTUDataset(self.train_X, self.train_Y)
@@ -97,17 +99,25 @@ class NTUDataLoaders(object):
                 self.metric = 'SETTUP'
             path = osp.join('./data/ntu/ntu120', 'NTU_' + self.metric + '.h5')
         if self.dataset == 'SYSU':
-            path = osp.join('./data/sysu/SYSU.h5')
+            self.metric = 'CS'
+            path = osp.join('./data/sysu', 'SYSU_' + self.metric + '.h5')
 
         
         if self.dataset == 'SYSU':
             f = h5py.File(path , 'r')
+            self.train_X = f['x'][:]
+            self.train_Y = np.argmax(f['y'][:],-1)
+            self.val_X = f['valid_x'][:]
+            self.val_Y = np.argmax(f['valid_y'][:], -1)
             self.test_X = f['test_x'][:]
             self.test_Y = np.argmax(f['test_y'][:], -1)
             #print(self.test_X.shape) #(480, 638, 60) #sysu
             #print(self.test_Y.shape) #(480,) #sysu
             f.close()
             
+            ## Combine the training data and validation data togehter as ST-GCN
+            self.train_X = np.concatenate([self.train_X, self.val_X], axis=0)
+            self.train_Y = np.concatenate([self.train_Y, self.val_Y], axis=0)
             self.val_X = self.test_X
             self.val_Y = self.test_Y
             
@@ -154,6 +164,8 @@ class NTUDataLoaders(object):
             elif self.case == 2:
                 theta = 0.3
         elif self.dataset == 'NTU120':
+            theta = 0.3
+        elif self.dataset == 'SYSU':
             theta = 0.3
 
         #### data augmentation

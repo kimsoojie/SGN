@@ -12,6 +12,8 @@ class SGN(nn.Module):
         self.dataset = dataset
         self.seg = seg
         num_joint = 25
+        if dataset == 'SYSU':
+            num_joint=20
         
         bs = args.batch_size
         if args.train:
