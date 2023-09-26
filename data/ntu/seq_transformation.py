@@ -201,8 +201,12 @@ def get_indices(performer, camera, evaluation='CS'):
             test_ids = [3,  6,  7,  10, 11, 12, 20, 21, 22, 23,
                         24, 26, 29, 30, 32, 33, 36, 37, 39, 40]
         if cfgs['cfgs']['dataset']=='NTU120':
-            train_ids=[i for i in range(1, 54)] #for ntu120
-            test_ids=[i for i in range(54, 106)] #for ntu120
+            values = list(range(1, 107))
+            train_ids = [x for x in values if x % 2 == 0]
+            test_ids = [x for x in values if x % 2 != 0]
+            #train_ids=[i for i in range(1, 54)] #for ntu120
+            #test_ids=[i for i in range(54, 107)] #for ntu120
+            
 
         # Get indices of test data
         for idx in test_ids:
@@ -215,7 +219,7 @@ def get_indices(performer, camera, evaluation='CS'):
             #rnd = random.randint(0,len(np.where(performer == train_id))-1)
             temp = np.where(performer == train_id)[0]  # 0-based index
             train_indices = np.hstack((train_indices, temp)).astype(np.int)
-    else:  # Cross View (Camera IDs)
+    elif evaluation == 'CV':  # Cross View (Camera IDs)
         train_ids = [2, 3]
         test_ids = 1
         # Get indices of test data
@@ -226,7 +230,12 @@ def get_indices(performer, camera, evaluation='CS'):
         for train_id in train_ids:
             temp = np.where(camera == train_id)[0]  # 0-based index
             train_indices = np.hstack((train_indices, temp)).astype(np.int)
-
+    else:
+        #C-setup setting
+        values = list(range(1, 33))
+        train_ids = [x for x in values if x % 2 == 0]
+        test_ids = [x for x in values if x % 2 != 0]
+        
     return train_indices, test_indices
 
 
@@ -245,6 +254,6 @@ if __name__ == '__main__':
 
     skes_joints = align_frames(skes_joints, frames_cnt)  # aligned to the same frame length
 
-    evaluations = ['CS', 'CV']
+    evaluations = ['CS', 'CV', 'SETUP']
     for evaluation in evaluations:
         split_dataset(skes_joints, label, performer, camera, evaluation, save_path)

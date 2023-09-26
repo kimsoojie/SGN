@@ -4,12 +4,12 @@ import argparse
 import time
 import shutil
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import os.path as osp
 import csv
 import numpy as np
 
-#np.random.seed(1337)
+np.random.seed(1337)
 
 import torch
 import torch.nn as nn
@@ -50,13 +50,13 @@ def main():
 
     args.num_classes = get_num_classes(args.dataset)
     model = SGN(args.num_classes, args.dataset, args.seg, args)
-    model.load_state_dict(torch.load('results_cv/NTU120/SGN/1_best.pth')['state_dict'])
+    #model.load_state_dict(torch.load('results_cv/NTU120/SGN/1_best.pth')['state_dict'])
     
     model_clip = CLIP()
     
-    total_clip = get_n_params(model_clip)
-    print(model_clip)
-    print('The number of parameters (CLIP): ', total_clip)
+    #total_clip = get_n_params(model_clip)
+    #print(model_clip)
+    #print('The number of parameters (CLIP): ', total_clip)
     
     total = get_n_params(model)
     print(model)
@@ -73,7 +73,7 @@ def main():
     criterion = LabelSmoothingLoss(args.num_classes, smoothing=0.1).cuda()
     
     if cfgs['cfgs']['clip_train'] == False:
-        criterion_clip=CLIPLoss(model_clip,type='cross_entropy').cuda()
+        criterion_clip=CLIPLoss(model_clip,type='cosine_similarity').cuda()
     elif cfgs['cfgs']['clip_train'] == True:
         criterion_clip=CLIPTrainLoss().cuda()
     
@@ -100,13 +100,14 @@ def main():
     
     # Data loading
     ntu_loaders = NTUDataLoaders(args.dataset, args.case, seg=args.seg)
+    #ntu_loaders = NTUDataLoaders('SYSU', args.case, seg=args.seg)
     train_loader = ntu_loaders.get_train_loader(args.batch_size, args.workers)
     val_loader = ntu_loaders.get_val_loader(args.batch_size, args.workers)
     train_size = ntu_loaders.get_train_size()
     val_size = ntu_loaders.get_val_size()
 
     test_loader = ntu_loaders.get_test_loader(32, args.workers)
-
+    
     print('Train on %d samples, validate on %d samples' % (train_size, val_size))
 
     best_epoch = 0
@@ -202,12 +203,12 @@ def train(train_loader, model, criterion, criterion_clip, optimizer, epoch, mode
     model.train()
     if cfgs['cfgs']['clip_train'] == True:
             model_clip.train()
-    
+
     for i, (inputs, target) in enumerate(train_loader):
         #input:[bs,20,75]
         output, sekeleton_embeddings = model(inputs.cuda())  #sekeleton_embeddings:[bs, 512, 1, 20]
-        #print(target.shape)#[bs]
-        #print(inputs.shape)#[bs,20,75]
+        #print('==',target.shape)#[bs]
+        #print('==',inputs.shape)#[bs,20,75]/[bs,20,60]
   
         #target:[bs]
         #target = target.cuda(async = True)
@@ -351,7 +352,18 @@ def test(test_loader, model, checkpoint, checkpoint_clip, lable_path, pred_path,
     t_start = time.time()
     for i, (inputs, target) in enumerate(test_loader):
         with torch.no_grad():
+            
+            #ntu120 model train, sysu test
+            #sysu=False
+            #if inputs.shape[2] == 60:
+            #    sysu=True
+            #    target_shape = [inputs.shape[0],inputs.shape[1],75]
+            #    new_inputs = np.zeros(target_shape)
+            #    new_inputs[:inputs.shape[0], :inputs.shape[1], :inputs.shape[2]] = inputs
+            #    inputs = torch.FloatTensor(new_inputs)
+                
             output, skeleton_embedding = model(inputs.cuda())
+            
             if cfgs['cfgs']['network']=='SGN_CLIP':
                 output=skeleton_embedding
 
@@ -566,8 +578,11 @@ class CLIPLoss(nn.Module):
                 text_features = text_embeddings[target[i].cpu().numpy(), :]
                 text_features = torch.tensor(text_features).to(skeleton_embeddings.device)
                 skeleton_embeddings = skeleton_embeddings.view(-1,512) #[bs,512]
+                #print(text_features.shape)
+                #print(skeleton_embeddings.shape)
                 #cosine_similarity = F.cosine_similarity(text_features.unsqueeze(0), skeleton_embeddings.unsqueeze(1), dim=-1) #[bs,bs]
-                cosine_similarity = F.cosine_similarity(skeleton_embeddings.unsqueeze(1), text_features.unsqueeze(0), dim=-1) #[bs,bs]
+                #cosine_similarity = F.cosine_similarity(skeleton_embeddings.unsqueeze(1), text_features.unsqueeze(0), dim=-1) #[bs,bs]
+                cosine_similarity = F.cosine_similarity(skeleton_embeddings, text_features, dim=-1) #[bs,bs]
                 clip_loss = 1-cosine_similarity.view(-1).mean()
                 #text_embed=text_features.repeat(bs, 1).float()
                 #mse = nn.MSELoss()(text_embed,skeleton_embeddings)
