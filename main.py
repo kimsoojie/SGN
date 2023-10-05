@@ -22,8 +22,8 @@ import clip
 from data import NTUDataLoaders, AverageMeter
 import fit
 from util import make_dir, get_num_classes
-from label_text import text, text_sysu
-from sklearn.metrics import confusion_matrix
+from label_text import text, text_sysu, text_nucla
+from sklearn.metrics import confusion_matrix, accuracy_score
 import seaborn as sns
 import matplotlib.pyplot as plt
 
@@ -32,9 +32,10 @@ parser = argparse.ArgumentParser(description='Skeleton-Based Action Recgnition')
 fit.add_fit_args(parser)
 parser.set_defaults(
     network='SGN',
-    dataset = 'SYSU',
+    dataset = 'NTU120',
+    dataloader_type='NTU120',
     case = 0,
-    batch_size=10,
+    batch_size=  512,
     max_epochs=120,
     monitor='val_acc',
     lr=0.001,
@@ -89,6 +90,7 @@ clip_model = load_and_freeze_clip("ViT-B/32")
 clip_model = clip_model.cuda()
 text_embed = encoded_text(clip_model, text)
 text_embed_sysu = encoded_text(clip_model, text_sysu)
+text_embed_nucla = encoded_text(clip_model, text_nucla)
 
 def main():
 
@@ -126,8 +128,8 @@ def main():
     scheduler = MultiStepLR(optimizer, milestones=[60, 90, 110], gamma=0.1)
     # Data loading
     
-    #ntu_loaders = NTUDataLoaders(args.dataset, args.case, seg=args.seg)
-    ntu_loaders = NTUDataLoaders(args.dataset, args.case, seg=args.seg)
+    #ntu_loaders = NTUDataLoaders('SYSU', args.case, seg=args.seg)
+    ntu_loaders = NTUDataLoaders(args.dataloader_type, args.case, seg=args.seg)
     train_loader = ntu_loaders.get_train_loader(args.batch_size, args.workers)
     val_loader = ntu_loaders.get_val_loader(args.batch_size, args.workers)
     train_size = ntu_loaders.get_train_size()
@@ -135,7 +137,10 @@ def main():
     test_loader = ntu_loaders.get_test_loader(32, args.workers)
 
     #print('Train on %d samples, validate on %d samples' % (train_size, val_size))
-
+    print(len(train_loader))
+    print(len(val_loader))
+    print(len(test_loader))
+    
     best_epoch = 0
     output_dir = make_dir(args.dataset)
 
@@ -216,14 +221,21 @@ def train(train_loader, model, model_fc, criterion, optimizer, epoch, dataset):
     model_fc.train()
 
     for i, (inputs, target) in enumerate(train_loader):
-        #print(inputs.shape)
-        #print(target.shape)
+        if args.dataset == 'NTU120' and (args.dataloader_type == 'SYSU' or args.dataloader_type == 'NUCLA'):
+                target_shape = [inputs.shape[0],inputs.shape[1],75]
+                new_inputs = np.zeros(target_shape)
+                new_inputs[:inputs.shape[0], :inputs.shape[1], :inputs.shape[2]] = inputs
+                inputs = torch.FloatTensor(new_inputs)
+                
         _, action_features = model(inputs.cuda())
         output = model_fc(action_features.detach())
         if dataset == 'SYSU':
             cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed_sysu.unsqueeze(0), dim=2)
-        else:
+        elif dataset == 'NTU120':
             cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed.unsqueeze(0), dim=2)
+        elif dataset == 'NUCLA':
+            cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed_nucla.unsqueeze(0), dim=2)
+            
         target = target.cuda()
 
         loss = criterion(cosine_sim, target)
@@ -255,12 +267,20 @@ def validate(val_loader, model, model_fc, criterion, dataset):
 
     for i, (inputs, target) in enumerate(val_loader):
         with torch.no_grad():
+            if args.dataset == 'NTU120' and (args.dataloader_type == 'SYSU' or args.dataloader_type == 'NUCLA'):
+                target_shape = [inputs.shape[0],inputs.shape[1],75]
+                new_inputs = np.zeros(target_shape)
+                new_inputs[:inputs.shape[0], :inputs.shape[1], :inputs.shape[2]] = inputs
+                inputs = torch.FloatTensor(new_inputs)
+                
             output, action_features = model(inputs.cuda())
             output = model_fc(action_features.detach())
             if dataset == 'SYSU':
                 cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed_sysu.unsqueeze(0), dim=2)
-            else:
+            elif dataset == 'NTU120':
                 cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed.unsqueeze(0), dim=2)
+            elif dataset == 'NUCLA':
+                cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed_nucla.unsqueeze(0), dim=2)
         target = target.cuda()
         with torch.no_grad():
             loss = criterion(cosine_sim, target)
@@ -287,32 +307,31 @@ def test(test_loader, model, model_fc, checkpoint, lable_path, pred_path, datase
     label_output = list()
     pred_output = list()
 
+    label=[]
+    predicted=[]
+    
     t_start = time.time()
     for i, (inputs, target) in enumerate(test_loader):
         with torch.no_grad():
             #print(inputs.shape)#torch.Size([160, 20, 60]):sysu/[160,20,75]:ntu120
             #print(target.shape)#torch.Size([32]):sysu
             
-            sysu=False
-            if inputs.shape[2] == 60:
-                sysu=True
-                #target_shape = [inputs.shape[0],inputs.shape[1],75]
-                #new_inputs = np.zeros(target_shape)
-                #new_inputs[:inputs.shape[0], :inputs.shape[1], :inputs.shape[2]] = inputs
-                #inputs = torch.FloatTensor(new_inputs)
-               
+            if args.dataset == 'NTU120' and (args.dataloader_type == 'SYSU' or args.dataloader_type == 'NUCLA'):
+                target_shape = [inputs.shape[0],inputs.shape[1],75]
+                new_inputs = np.zeros(target_shape)
+                new_inputs[:inputs.shape[0], :inputs.shape[1], :inputs.shape[2]] = inputs
+                inputs = torch.FloatTensor(new_inputs)
+            
             output2, action_features = model(inputs.cuda())
             output = model_fc(action_features)
-            if sysu == True:
+            if args.dataloader_type == 'SYSU':
                 cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed_sysu.unsqueeze(0), dim=2)
+            elif args.dataloader_type == 'NUCLA':
+                cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed_nucla.unsqueeze(0), dim=2)
             else:
                 cosine_sim = torch.cosine_similarity(output.unsqueeze(1), text_embed.unsqueeze(0), dim=2)
             cosine_sim = cosine_sim.view((-1, inputs.size(0)//target.size(0), cosine_sim.size(1)))
-            cosine_sim = cosine_sim.mean(1)
-            #print('test:', cosine_sim.shape, output2.shape, output.shape)
-            #output2 = output2.view((-1, inputs.size(0)//target.size(0), output2.size(1)))
-            #output2 = output2.mean(1)
-            #cosine_sim = (cosine_sim+output2)/2            
+            cosine_sim = cosine_sim.mean(1)          
 
         label_output.append(target.cpu().numpy())
         #pred_output.append(output2.cpu().numpy())
@@ -326,19 +345,55 @@ def test(test_loader, model, model_fc, checkpoint, lable_path, pred_path, datase
         
         
         _, pred = cosine_sim.data.topk(1, 1, True, True)
-        print(target.cpu().numpy())
-        print(pred.t().cpu().numpy()[0])
-        pred=pred.t().cpu().numpy()[0]
-        cm = confusion_matrix(target.cpu().numpy(), pred)
-        plt.figure(figsize=(10, 8))
-        sns.heatmap(cm, annot=True, fmt="d", cmap="Greys", xticklabels=np.arange(12), yticklabels=np.arange(12))
-        plt.xlabel("predicted label")
+        label.append(target.cpu().numpy())
+        predicted.append(pred.t().cpu().numpy()[0])
+       
+        
+    if args.dataloader_type=='SYSU' or args.dataloader_type=='NUCLA' or args.dataloader_type=='NTU120':
+        label=np.concatenate(label)
+        predicted=np.concatenate(predicted)
+        cm = confusion_matrix(label,predicted)
+        total = np.sum(cm)
+        cm = (cm/total)*100.
+        print('total',total)
+        
+        if args.dataloader_type=='SYSU':
+            #n=12
+            n=text_sysu
+            plt.figure(figsize=(20, 18))
+        elif args.dataloader_type=='NUCLA':
+            #n=10
+            n=text_nucla
+            plt.figure(figsize=(20, 18))
+        elif args.dataloader_type=='NTU120':
+            #n=120
+            n=text
+            plt.figure(figsize=(60, 60))
+                
+        
+        h = sns.heatmap(cm, annot=True,  fmt=".1f",cmap='Greys', xticklabels=n, yticklabels=n)
+        h.set_facecolor('white')
+    
+        #t=0
+        #for text_x, text_y in zip(h.get_xticklabels(),h.get_yticklabels()):
+        #    if t%2 == 0:
+        #        text_x.set(rotation=90, ha='center', va='center',y=-0.03)
+        #        text_y.set(rotation=0, ha='center', va='center', x=-0.03)
+        #    t += 1
+            
+       
+        for t in h.texts:
+            t.set(rotation=45, ha='center', va='center')
+            
+            
+        plt.xlabel("predicted label",)
         plt.ylabel("target label")
-        plt.title("SYSU skeleton action recognition (SGN+CLIP)")
-        plt.savefig(str(i)+'_confusion_matrix.jpg')
+    
+        plt.title(args.dataloader_type+" (SGN+CLIP)")
+        plt.savefig('cm_'+args.dataloader_type+'.jpg')
         plt.close()
-    
-    
+        acc_224 = accuracy_score(label,predicted) * 100.
+        print('**test accuracy:', acc_224)
     
     label_output = np.concatenate(label_output, axis=0)
     np.savetxt(lable_path, label_output, fmt='%d')

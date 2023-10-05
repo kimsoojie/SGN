@@ -148,3 +148,16 @@ text_sysu=[
     "mopping",
     "sweeping"
 ]
+
+text_nucla=[
+    "pick up with one hand",
+    "pick up with two hands",
+    "drop trash",
+    "walk around",
+    "sit down",
+    "stand up",
+    "donning",
+    "doffing",
+    "throw",
+    "carry"
+]

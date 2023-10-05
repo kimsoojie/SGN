@@ -12,7 +12,7 @@ class SGN(nn.Module):
         self.dataset = dataset
         self.seg = seg
         num_joint = 25
-        if dataset == 'SYSU':
+        if dataset == 'SYSU' or dataset == 'NUCLA':
             num_joint=20
         
         bs = args.batch_size
@@ -50,16 +50,6 @@ class SGN(nn.Module):
 
 
     def forward(self, input):
-        #print(input.shape)#[32, 3, 20, 638]
-        #soojie
-        #print(input.shape) #[bs,step,60]
-        #bs, step, dim = input.size()
-        #new_shape = (bs,step, 75)
-        #new_tensor = torch.zeros(new_shape, dtype=input.dtype)
-        #new_tensor[:, :, :dim] = input
-        #input=new_tensor.to(input.device)
-        #print(input.shape)#[bs,step,75]
-        
         # Dynamic Representation
         bs, step, dim = input.size()
         num_joints = dim //3
@@ -114,7 +104,7 @@ class norm_data(nn.Module):
     def __init__(self, dim= 64, dataset=None):
         super(norm_data, self).__init__()
         joint=25
-        if dataset=='SYSU':
+        if dataset=='SYSU' or dataset == 'NUCLA':
             joint=20
         self.bn = nn.BatchNorm1d(dim* joint)
 

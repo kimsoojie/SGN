@@ -15,7 +15,8 @@ def make_dir(dataset):
         output_dir = os.path.join('./results/NTU120/')
     elif dataset == 'SYSU':
         output_dir = os.path.join('./results/SYSU/')
-
+    elif dataset =='NUCLA':
+        output_dir = os.path.join('./results/NUCLA/')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -28,5 +29,6 @@ def get_num_classes(dataset):
         return 120
     elif dataset == 'SYSU':
         return 12
-
+    elif dataset == 'NUCLA':
+        return 10
     
