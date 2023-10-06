@@ -33,9 +33,9 @@ fit.add_fit_args(parser)
 parser.set_defaults(
     network='SGN',
     dataset = 'NTU120',
-    dataloader_type='NTU120',
+    dataloader_type='NUCLA',
     case = 0,
-    batch_size=  512,
+    batch_size=  10,
     max_epochs=120,
     monitor='val_acc',
     lr=0.001,

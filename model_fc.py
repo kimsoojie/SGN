@@ -28,7 +28,7 @@ class ActionText(nn.Module):
     def __init__(self):
         super().__init__()
         res_blocks = []
-        for _ in range(6):
+        for _ in range(3):
             res_blocks.append(ResBlock())
         self.res_blocks = nn.Sequential(*res_blocks)
         self.fc = nn.Linear(512, 512)
